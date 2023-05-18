@@ -82,7 +82,7 @@ def server_request(path):
         "x-api-key": api_key,
         "Content-Type": "application/json"
     }
-    list_endpoint_url = urljoin(api_gateway_url, path)
+    list_endpoint_url = f'{api_gateway_url}{path}'
     response = requests.get(list_endpoint_url, headers=headers)
     return response
 
