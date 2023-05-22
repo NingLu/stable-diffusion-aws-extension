@@ -92,17 +92,23 @@ def getInferenceJobList():
 
     
 def getInferenceJob(inference_job_id):
+    if not inference_job_id:
+        logger.error("Invalid inference job id")
+        raise ValueError("Inference job id must not be None or empty")
+
     try:
         resp = inference_table.query(
             KeyConditionExpression=Key('InferenceJobId').eq(inference_job_id)
         )
         logger.info(resp)
+        record_list = resp['Items']
+        if len(record_list) == 0:
+            logger.error(f"No inference job info item for id: {inference_job_id}")
+            raise ValueError(f"There is no inference job info item for id: {inference_job_id}")
+        return record_list[0]
     except Exception as e:
-        logger.error(e)
-    record_list = resp['Items']
-    if len(record_list) == 0:
-        raise Exception("There is no inference job info item for id:" + inference_job_id)
-    return record_list[0]
+        logger.error(f"Exception occurred when trying to query inference job with id: {inference_job_id}, exception is {str(e)}")
+        raise
     
 def getEndpointDeploymentJobList():
     try:
@@ -578,15 +584,25 @@ async def run_sagemaker_inference(request: Request):
             "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
         }
 
+        current_time = str(datetime.now())
+        response = inference_table.put_item(
+            Item={
+                'InferenceJobId': inference_id,
+                'startTime': current_time,
+                'completeTime': current_time,
+                'status': 'failure',
+                'error': f"error info {str(e)}"}
+            )
+         
         response = JSONResponse(content={"inference_id": inference_id, "status":"failure", "error": f"error info {str(e)}"}, headers=headers)
         return response
 
 @app.post("/inference/deploy-sagemaker-endpoint")
 async def deploy_sagemaker_endpoint(request: Request):
     logger.info("entering the deploy_sagemaker_endpoint function!")
+    endpoint_deployment_id = get_uuid()
     try:
         payload = await request.json()
-        endpoint_deployment_id = get_uuid()
         logger.info(f"input in json format {payload}")
         payload['endpoint_deployment_id'] = endpoint_deployment_id
 
@@ -610,7 +626,17 @@ async def deploy_sagemaker_endpoint(request: Request):
         return 0
     except Exception as e:
         logger.error(f"error calling run-sagemaker-inference with exception: {e}")
-        raise e
+        #put the item to inference DDB for later check status
+        current_time = str(datetime.now())
+        response = endpoint_deployment_table.put_item(
+        Item={
+            'EndpointDeploymentJobId': endpoint_deployment_id,
+            'startTime': current_time,
+            'status': 'failed',
+            'completeTime': current_time, 
+            'error': str(e)
+        })
+        return 0
 
 @app.get("/inference/list-endpoint-deployment-jobs")
 async def list_endpoint_deployment_jobs():
@@ -634,7 +660,11 @@ async def get_endpoint_deployment_job(jobID: str = None):
 async def get_inference_job(jobID: str = None):
     inference_jobId = jobID
     logger.info(f"entering get_inference_job function with jobId: {inference_jobId}")
-    return getInferenceJob(inference_jobId)
+    try:
+        return getInferenceJob(inference_jobId)
+    except Exception as e:
+        logger.error(f"Error getting inference job: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/inference/get-inference-job-image-output")
 async def get_inference_job_image_output(jobID: str = None) -> List[str]:
@@ -646,17 +676,26 @@ async def get_inference_job_image_output(jobID: str = None) -> List[str]:
 
     logger.info(f"Entering get_inference_job_image_output function with jobId: {inference_jobId}")
 
-    job_record = getInferenceJob(inference_jobId)
+    try:
+        job_record = getInferenceJob(inference_jobId)
+    except Exception as e:
+        logger.error(f"Error getting inference job: {str(e)}")
+        return []
 
     # Assuming the job_record contains a list of image names
-    image_names = job_record["image_names"]
+    image_names = job_record.get("image_names", [])
 
     presigned_urls = []
 
     for image_name in image_names:
-        image_key = f"out/{inference_jobId}/result/{image_name}"
-        presigned_url = generate_presigned_url(S3_BUCKET_NAME, image_key)
-        presigned_urls.append(presigned_url)
+        try:
+            image_key = f"out/{inference_jobId}/result/{image_name}"
+            presigned_url = generate_presigned_url(S3_BUCKET_NAME, image_key)
+            presigned_urls.append(presigned_url)
+        except Exception as e:
+            logger.error(f"Error generating presigned URL for image {image_name}: {str(e)}")
+            # Continue with the next image if this one fails
+            continue
 
     return presigned_urls
 
@@ -670,12 +709,20 @@ async def get_inference_job_param_output(jobID: str = None) -> List[str]:
 
     logger.info(f"Entering get_inference_job_param_output function with jobId: {inference_jobId}")
 
-    job_record = getInferenceJob(inference_jobId)
+    try:
+        job_record = getInferenceJob(inference_jobId)
+    except Exception as e:
+        logger.error(f"Error getting inference job: {str(e)}")
+        return []
 
     presigned_url = ""
 
-    json_key = f"out/{inference_jobId}/result/{inference_jobId}_param.json"
-    presigned_url = generate_presigned_url(S3_BUCKET_NAME, json_key)
+    try:
+        json_key = f"out/{inference_jobId}/result/{inference_jobId}_param.json"
+        presigned_url = generate_presigned_url(S3_BUCKET_NAME, json_key)
+    except Exception as e:
+        logger.error(f"Error generating presigned URL: {str(e)}")
+        return []
 
     return [presigned_url]
 
@@ -702,16 +749,25 @@ async def generate_s3_presigned_url_for_uploading(s3_bucket_name: str = None, ke
     if not key:
         raise HTTPException(status_code=400, detail="Key parameter is required")
 
-    presigned_url = s3.generate_presigned_url(
-        'put_object',
-        Params={
-            'Bucket': s3_bucket_name,
-            'Key': key,
-            'ContentType': 'text/plain;charset=UTF-8'
-        },
-        ExpiresIn=3600,
-        HttpMethod='PUT'
-    )
+    try:
+        presigned_url = s3.generate_presigned_url(
+            'put_object',
+            Params={
+                'Bucket': s3_bucket_name,
+                'Key': key,
+                'ContentType': 'text/plain;charset=UTF-8'
+            },
+            ExpiresIn=3600,
+            HttpMethod='PUT'
+        )
+    except Exception as e:
+        headers = {
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+        }
+        return JSONResponse(content=str(e), status_code=500, headers=headers)
+
     headers = {
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Allow-Origin": "*",

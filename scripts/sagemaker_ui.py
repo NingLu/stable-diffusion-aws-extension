@@ -94,6 +94,7 @@ def datetime_to_short_form(datetime_str):
 def update_sagemaker_endpoints():
     global sagemaker_endpoints
 
+    sagemaker_endpoints.clear()
     try:
         response = server_request('inference/list-endpoint-deployment-jobs')
         r = response.json()
@@ -142,6 +143,8 @@ def get_inference_job_list():
             txt2img_inference_job_ids.clear()  # Clear the existing list before appending new values
             temp_list = []
             for obj in r:
+                if obj.get('completeTime') is None:
+                    continue
                 complete_time = obj.get('completeTime')
                 inference_job_id = obj.get('InferenceJobId')
                 combined_string = f"{complete_time}-->{inference_job_id}"
@@ -163,6 +166,7 @@ def get_inference_job_list():
 
 def get_inference_job(inference_job_id):
     response = server_request(f'inference/get-inference-job?jobID={inference_job_id}')
+    print(f"response of get_inference_job is {str(response)}")
     return response.json()
 
 def get_inference_job_image_output(inference_job_id):
@@ -216,13 +220,16 @@ def download_images(image_urls: list, local_directory: str):
 def get_model_list_by_type(model_type):
 
     api_gateway_url = get_variable_from_json('api_gateway_url')
+    api_key = get_variable_from_json('api_token')
+
+    # check if api_gateway_url and api_key are set
+    if api_gateway_url is None or api_key is None:
+        print("api_gateway_url or api_key is not set")
+        return []
+
     # Check if api_url ends with '/', if not append it
     if not api_gateway_url.endswith('/'):
         api_gateway_url += '/'
-    api_key = get_variable_from_json('api_token')
-    if api_gateway_url is None:
-        print(f"failed to get the api-gateway url, can not fetch remote data")
-        return []
 
     url = api_gateway_url + f"checkpoints?status=Active"
     if isinstance(model_type, list):
@@ -240,6 +247,10 @@ def get_model_list_by_type(model_type):
 
         checkpoint_list = []
         for ckpt in json_response["checkpoints"]:
+            if "name" not in ckpt:
+                continue
+            if ckpt["name"] is None:
+                continue
             ckpt_type = ckpt["type"]
             for ckpt_name in ckpt["name"]:
                 ckpt_s3_pos = f"{ckpt['s3Location']}/{ckpt_name.split('/')[-1]}"
@@ -247,7 +258,7 @@ def get_model_list_by_type(model_type):
                 checkpoint_list.append(ckpt_name)
 
         return checkpoint_list
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         print(f"Error fetching model list: {e}")
         return []
 
@@ -286,6 +297,10 @@ def refresh_all_models():
                 checkpoint_info[rp] = {}
                 continue
             for ckpt in json_response["checkpoints"]:
+                if "name" not in ckpt:
+                    continue
+                if ckpt["name"] is None:
+                    continue
                 ckpt_type = ckpt["type"]
                 checkpoint_info[ckpt_type] = {}
                 for ckpt_name in ckpt["name"]:
@@ -444,6 +459,7 @@ def generate_on_cloud_no_input(sagemaker_endpoint):
 
     inference_url = f"{api_gateway_url}inference/run-sagemaker-inference"
     response = requests.post(inference_url, json=payload, headers=headers)
+    print(f"Raw server response: {response.text}") 
     try:
         r = response.json()
     except JSONDecodeError as e:
@@ -452,6 +468,7 @@ def generate_on_cloud_no_input(sagemaker_endpoint):
     else:
         print(f"response for rest api {r}")
         inference_id = r.get('inference_id')  # Assuming the response contains 'inference_id' field
+        print(f"inference_id is {inference_id}")
 
         # Loop until the get_inference_job status is 'succeed' or 'failed'
         while True:
@@ -485,10 +502,15 @@ def sagemaker_deploy(instance_type, initial_instance_count=1):
     print(f"start deploying instance type: {instance_type} with count {initial_instance_count}............")
 
     api_gateway_url = get_variable_from_json('api_gateway_url')
+    api_key = get_variable_from_json('api_token')
+
+    # check if api_gateway_url and api_key are set
+    if api_gateway_url is None or api_key is None:
+        print("api_gateway_url and api_key are not set")
+        return
     # Check if api_url ends with '/', if not append it
     if not api_gateway_url.endswith('/'):
         api_gateway_url += '/'
-    api_key = get_variable_from_json('api_token')
 
     payload = {
         "instance_type": instance_type,
@@ -672,7 +694,7 @@ def create_ui():
                 #     outputs=[sagemaker_html_log]
                 # )
                 global generate_on_cloud_button_with_js
-                generate_on_cloud_button_with_js = gr.Button(value="Generate on Cloud", variant='primary', elem_id="generate_on_cloud_with_cloud_config_button")
+                generate_on_cloud_button_with_js = gr.Button(value="Generate on Cloud", variant='primary', elem_id="generate_on_cloud_with_cloud_config_button",queue=True)
                 # generate_on_cloud_button_with_js.click(
                 #     # _js="txt2img_config_save",
                 #     fn=generate_on_cloud_no_input,
@@ -686,7 +708,7 @@ def create_ui():
                 #     inputs=[],
                 #     outputs=[]
                 # )
-            with gr.Row(variant='panel'):
+            with gr.Row():
                 global inference_job_dropdown
                 global txt2img_inference_job_ids
                 inference_job_dropdown = gr.Dropdown(txt2img_inference_job_ids,
@@ -699,7 +721,7 @@ def create_ui():
                 gr.HTML(value="Extra Networks for Cloud Inference")
             #     advanced_model_refresh_button = modules.ui.create_refresh_button(sd_checkpoint, update_sd_checkpoints, lambda: {"choices": sorted(sd_checkpoints)}, "refresh_sd_checkpoints")
 
-            with gr.Row(variant='panel'):
+            with gr.Row():
                 textual_inversion_dropdown = gr.Dropdown(multiselect=True, label="Textual Inversion", choices=sorted(get_texual_inversion_list()),elem_id="sagemaker_texual_inversion_dropdown")
                 create_refresh_button(
                     textual_inversion_dropdown,
@@ -714,7 +736,7 @@ def create_ui():
                     lambda: {"choices": sorted(get_lora_list())},
                     "refresh_lora",
                 )
-            with gr.Row(variant='panel'):
+            with gr.Row():
                 hyperNetwork_dropdown = gr.Dropdown(multiselect=True, label="HyperNetwork", choices=sorted(get_hypernetwork_list()), elem_id="sagemaker_hypernetwork_dropdown")
                 create_refresh_button(
                     hyperNetwork_dropdown,
