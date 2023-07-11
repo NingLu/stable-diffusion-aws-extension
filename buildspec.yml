@@ -21,7 +21,7 @@ phases:
       - echo "Installing dependencies and executing unit tests - `pwd`"
       - apt-get update -y
       - apt-get install nodejs npm
-      - echo Update npm to latest
+      - echo "Update npm to latest"
       - npm install -g npm@latest
       - cd infrastructure
       - chmod +x ./run-all-tests.sh && ./run-all-tests.sh
