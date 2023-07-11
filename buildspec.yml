@@ -18,18 +18,22 @@ phases:
       - echo "nothing to do in install"
   pre_build:
     commands:
-      - echo "Installing dependencies and executing unit tests - `pwd`"
+      - echo "Entering install phase"
+      - echo "Updating..."
       - apt-get update -y
-      - curl -sL https://deb.nodesource.com/setup_14.x | bash -
-      - apt-get install -y node-gyp nodejs npm jq 
-      - echo "Update npm to latest"
-      - npm install -g npm@latest
-      - node --version
-      - npm --version
-      - echo "Install docker"
-      - apt install apt-transport-https ca-certificates curl software-properties-common
-      - apt-get install docker-ce
-      - docker --version
+      - echo "Installing dependencies..."
+      - apt-get install build-essential dkms -y
+      - apt-get install freeglut3 freeglut3-dev libxi-dev libxmu-dev -y
+      - echo "Downloading CUDA toolkit..."
+      - wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-ubuntu1804.pin
+      - mv cuda-ubuntu1804.pin /etc/apt/preferences.d/cuda-repository-pin-600
+      - wget http://developer.download.nvidia.com/compute/cuda/11.2.2/local_installers/cuda-repo-ubuntu1804-11-2-local_11.2.2-460.32.03-1_amd64.deb
+      - dpkg -i cuda-repo-ubuntu1804-11-2-local_11.2.2-460.32.03-1_amd64.deb
+      - apt-key add /var/cuda-repo-ubuntu1804-11-2-local/7fa2af80.pub
+      - apt-get update
+      - echo "Installing CUDA toolkit..."
+      - apt-get -y install cuda
+      - echo "Installing dependencies and executing unit tests - `pwd`"
       - cd infrastructure
       - chmod +x ./run-all-tests.sh && ./run-all-tests.sh
       - echo "Installing dependencies and executing unit tests completed `date`"
