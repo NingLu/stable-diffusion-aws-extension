@@ -20,7 +20,7 @@ phases:
     commands:
       - echo "Installing dependencies and executing unit tests - `pwd`"
       - apt-get update -y
-      - apt-get install nodejs npm
+      - apt-get install -y nodejs npm
       - echo "Update npm to latest"
       - npm install -g npm@latest
       - cd infrastructure
