@@ -20,6 +20,7 @@ phases:
     commands:
       - echo "Entering install phase"
       - echo "Updating..."
+      - set -euxo pipefail
       - apt-get update -y
       - echo "Installing dependencies..."
       - apt-get install build-essential dkms -y
