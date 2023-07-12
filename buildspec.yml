@@ -18,24 +18,24 @@ phases:
       - echo "nothing to do in install"
   pre_build:
     commands:
-      - echo "Entering install phase"
-      - echo "Updating..."
-      - set -euxo pipefail
-      - apt-get update -y
-      - echo "Installing dependencies..."
-      - apt-get install build-essential dkms -y
-      - apt-get install freeglut3 freeglut3-dev libxi-dev libxmu-dev -y
-      - echo "Downloading CUDA toolkit..."
-      - wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
-      - mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
-      - wget https://developer.download.nvidia.com/compute/cuda/11.2.2/local_installers/cuda-repo-ubuntu2004-11-2-local_11.2.2-460.32.03-1_amd64.deb
-      - export DEBIAN_FRONTEND=noninteractive
-      - dpkg -i cuda-repo-ubuntu2004-11-2-local_11.2.2-460.32.03-1_amd64.deb
-      - apt-key add /var/cuda-repo-ubuntu2004-11-2-local/7fa2af80.pub 
-      - apt-get update -y
-      - echo "Installing CUDA toolkit..."
-      - apt-get install cuda -y
-      - nvcc --version
+      # - echo "Entering install phase"
+      # - echo "Updating..."
+      # - set -euxo pipefail
+      # - apt-get update -y
+      # - echo "Installing dependencies..."
+      # - apt-get install build-essential dkms -y
+      # - apt-get install freeglut3 freeglut3-dev libxi-dev libxmu-dev -y
+      # - echo "Downloading CUDA toolkit..."
+      # - wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
+      # - mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
+      # - wget https://developer.download.nvidia.com/compute/cuda/11.2.2/local_installers/cuda-repo-ubuntu2004-11-2-local_11.2.2-460.32.03-1_amd64.deb
+      # - export DEBIAN_FRONTEND=noninteractive
+      # - dpkg -i cuda-repo-ubuntu2004-11-2-local_11.2.2-460.32.03-1_amd64.deb
+      # - apt-key add /var/cuda-repo-ubuntu2004-11-2-local/7fa2af80.pub 
+      # - apt-get update -y
+      # - echo "Installing CUDA toolkit..."
+      # - apt-get install cuda -y
+      # - nvcc --version
       - echo "Installing dependencies and executing unit tests - `pwd`"
       - cd infrastructure
       - chmod +x ./run-all-tests.sh && ./run-all-tests.sh
@@ -54,22 +54,22 @@ phases:
     commands:
       - echo "Starting build the public ECR"
       - cd ../build_scripts
-      - chmod +x ./build_all.sh
-      - chmod +x ./build_and_push.sh
-      - chmod +x ./source_image_update.sh
-      - chmod +x ./update_private_ecr.sh
-      - json_output=$(aws sts assume-role  --role-arn "$AWS_ASSET_PUBLISH_ROLE"  --role-session-name "asset-publishing-role"  --duration-seconds "3600"  2>&1)
-      - set +x
-      - export AWS_ACCESS_KEY_ID=$(echo "${json_output}" | jq --raw-output ".Credentials[\"AccessKeyId\"]")
-      - export AWS_SECRET_ACCESS_KEY=$(echo "${json_output}" | jq --raw-output ".Credentials[\"SecretAccessKey\"]")
-      - export AWS_SESSION_TOKEN=$(echo "${json_output}" | jq --raw-output ".Credentials[\"SessionToken\"]")
-      - echo "BUILD VERSION is ${BUILD_VERSION}"
-      - ./build_all.sh dev ${BUILD_VERSION} ${CODEBUILD_RESOLVED_SOURCE_VERSION}
+      # - chmod +x ./build_all.sh
+      # - chmod +x ./build_and_push.sh
+      # - chmod +x ./source_image_update.sh
+      # - chmod +x ./update_private_ecr.sh
+      # - json_output=$(aws sts assume-role  --role-arn "$AWS_ASSET_PUBLISH_ROLE"  --role-session-name "asset-publishing-role"  --duration-seconds "3600"  2>&1)
+      # - set +x
+      # - export AWS_ACCESS_KEY_ID=$(echo "${json_output}" | jq --raw-output ".Credentials[\"AccessKeyId\"]")
+      # - export AWS_SECRET_ACCESS_KEY=$(echo "${json_output}" | jq --raw-output ".Credentials[\"SecretAccessKey\"]")
+      # - export AWS_SESSION_TOKEN=$(echo "${json_output}" | jq --raw-output ".Credentials[\"SessionToken\"]")
+      # - echo "BUILD VERSION is ${BUILD_VERSION}"
+      # - ./build_all.sh dev ${BUILD_VERSION} ${CODEBUILD_RESOLVED_SOURCE_VERSION}
       - echo "" > ../infrastructure/src/common/dockerImageTag.ts
       - echo "export const ECR_IMAGE_TAG:string = '${BUILD_VERSION}'" >> ../infrastructure/src/common/dockerImageTag.ts 
       - echo "checking the updated image name"
       - cat ../infrastructure/src/common/dockerImageTag.ts
-      - unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+      # - unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
       - set -x
       - echo "Starting build `date` in `pwd`"
       - cd ../deployment
