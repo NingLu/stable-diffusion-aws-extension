@@ -34,7 +34,7 @@ phases:
       - apt-key add /var/cuda-repo-ubuntu1804-11-2-local/7fa2af80.pub
       - apt-get update
       - echo "Installing CUDA toolkit..."
-      - apt-get -y install cuda
+      - apt-get install cuda -y
       - echo "Installing dependencies and executing unit tests - `pwd`"
       - cd infrastructure
       - chmod +x ./run-all-tests.sh && ./run-all-tests.sh
