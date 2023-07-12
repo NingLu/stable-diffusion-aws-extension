@@ -32,7 +32,7 @@ phases:
       - export DEBIAN_FRONTEND=noninteractive
       - dpkg -i cuda-repo-ubuntu1804-11-2-local_11.2.2-460.32.03-1_amd64.deb
       - apt-key add /var/cuda-repo-ubuntu1804-11-2-local/7fa2af80.pub
-      - apt-get update
+      - apt-get update -y
       - echo "Installing CUDA toolkit..."
       - apt-get install cuda -y
       - echo "Installing dependencies and executing unit tests - `pwd`"
