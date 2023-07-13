@@ -165,11 +165,16 @@ def sagemaker_api(_, app: FastAPI):
     @app.post("/invocations")
     def invocations(req: InvocationsRequest):
         thread_deque.append(req)
+        print(f"outside {threading.active_count()}")
+        print(f"outside {threading.current_thread()}")
         print(f"{threading.current_thread().ident}_{threading.current_thread().name} {len(thread_deque)}")
         if len(thread_deque) > 1:
+            print(f"inside {threading.active_count()}")
             print(f"wait {threading.current_thread().ident}_{threading.current_thread().name} {len(thread_deque)}")
             condition.wait(timeout=100000)
         print('-------invocation------')
+        print(f"outside1 {threading.active_count()}")
+        print(f"outside1 {threading.current_thread()}")
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______txt2img_payload is: ")
         txt2img_payload = {} if req.txt2img_payload is None else json.loads(req.txt2img_payload.json())
         print(json.loads(req.txt2img_payload.json()))
@@ -202,6 +207,8 @@ def sagemaker_api(_, app: FastAPI):
 
         try:
             if req.task == 'txt2img':
+                print(f"outside2 {threading.active_count()}")
+                print(f"outside2 {threading.current_thread()}")
                 print(
                     f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
                 selected_models = req.models
@@ -215,6 +222,8 @@ def sagemaker_api(_, app: FastAPI):
                 print(
                     f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! {len(response.json())}")
                 req = thread_deque.popleft()
+                print(f"outside3 {threading.active_count()}")
+                print(f"outside3 {threading.current_thread()}")
                 condition.notify()
                 return response.json()
                 # async def txt2img(req):
