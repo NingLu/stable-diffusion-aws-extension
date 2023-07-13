@@ -1,27 +1,30 @@
+import hashlib
 import json
 import logging
 import os
 import traceback
 import time
 import copy
-import threading
+
+import requests
 from fastapi import FastAPI
 
+import asyncio
+import aiohttp
+
+# from modules import sd_hijack, sd_models, sd_vae, script_loading, paths
 from modules import sd_models
+# import modules.shared as shared
 import modules.extras
 import sys
 from aws_extension.models import InvocationsRequest
 from aws_extension.mme_utils import checkspace_and_update_models, download_model, models_path
 import requests
-from utils import get_bucket_name_from_s3_path, get_path_from_s3_path, download_folder_from_s3_by_tar, \
-    upload_folder_to_s3_by_tar
+from utils import get_bucket_name_from_s3_path, get_path_from_s3_path, download_folder_from_s3_by_tar, upload_folder_to_s3_by_tar
 
 dreambooth_available = True
-
-
 def dummy_function(*args, **kwargs):
     return None
-
 
 try:
     sys.path.append("extensions/sd_dreambooth_extension")
@@ -30,12 +33,27 @@ except Exception as e:
     logging.warning("[api]Dreambooth is not installed or can not be imported, using dummy function to proceed.")
     dreambooth_available = False
     create_model = dummy_function
+# try:
+#     from dreambooth import shared
+#     from dreambooth.dataclasses.db_concept import Concept
+#     from dreambooth.dataclasses.db_config import from_file, DreamboothConfig
+#     from dreambooth.diff_to_sd import compile_checkpoint
+#     from dreambooth.secret import get_secret
+#     from dreambooth.shared import DreamState
+#     from dreambooth.ui_functions import create_model, generate_samples, \
+#         start_training
+#     from dreambooth.utils.gen_utils import generate_classifiers
+#     from dreambooth.utils.image_utils import get_images
+#     from dreambooth.utils.model_utils import get_db_models, get_lora_models
+# except:
+#     print("Exception importing api")
+#     traceback.print_exc()
+
 if os.environ.get("DEBUG_API", False):
     logging.basicConfig(level=logging.DEBUG)
 else:
     logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
-
 
 def merge_model_on_cloud(req):
     def modelmerger(*args):
@@ -87,38 +105,35 @@ def merge_model_on_cloud(req):
 
     print(f"sd model checkpoint list is {sd_models.checkpoints_list}")
 
-    [primary_model_name, secondary_model_name, tertiary_model_name, component_dict_sd_model_checkpoints,
-     modelmerger_result] = \
+    [primary_model_name, secondary_model_name, tertiary_model_name, component_dict_sd_model_checkpoints, modelmerger_result] = \
         modelmerger("fake_id_task", primary_model_name, secondary_model_name, tertiary_model_name, \
-                    interp_method, interp_amount, save_as_half, custom_name, checkpoint_format, config_source, \
-                    bake_in_vae, discard_weights, save_metadata)
+        interp_method, interp_amount, save_as_half, custom_name, checkpoint_format, config_source, \
+        bake_in_vae, discard_weights, save_metadata)
 
     output_model_position = modelmerger_result[20:]
 
     # check whether yaml exists
-    merge_model_name = output_model_position.split('/')[-1].replace(' ', '\ ')
+    merge_model_name = output_model_position.split('/')[-1].replace(' ','\ ')
 
-    yaml_position = output_model_position[:-len(output_model_position.split('.')[-1])] + 'yaml'
+    yaml_position = output_model_position[:-len(output_model_position.split('.')[-1])]+'yaml'
     yaml_states = os.path.isfile(yaml_position)
 
-    new_merge_model_name = merge_model_name.replace('(', '_').replace(')', '_')
+    new_merge_model_name = merge_model_name.replace('(','_').replace(')','_')
 
     base_path = models_path[model_type]
 
     merge_model_name_complete_path = base_path + '/' + merge_model_name
     new_merge_model_name_complete_path = base_path + '/' + new_merge_model_name
-    merge_model_name_complete_path = merge_model_name_complete_path.replace('(', '\(').replace(')', '\)')
+    merge_model_name_complete_path = merge_model_name_complete_path.replace('(','\(').replace(')','\)')
     os.system(f"mv {merge_model_name_complete_path} {new_merge_model_name_complete_path}")
 
-    model_yaml = (merge_model_name[:-len(merge_model_name.split('.')[-1])] + 'yaml').replace('(', '\(').replace(')',
-                                                                                                                '\)')
+    model_yaml = (merge_model_name[:-len(merge_model_name.split('.')[-1])]+'yaml').replace('(','\(').replace(')','\)')
     model_yaml_complete_path = base_path + '/' + model_yaml
 
-    print(
-        f"m {merge_model_name_complete_path}, n_m {new_merge_model_name_complete_path}, yaml {model_yaml_complete_path}")
+    print(f"m {merge_model_name_complete_path}, n_m {new_merge_model_name_complete_path}, yaml {model_yaml_complete_path}")
 
     if yaml_states:
-        new_model_yaml = model_yaml.replace('(', '_').replace(')', '_')
+        new_model_yaml = model_yaml.replace('(','_').replace(')','_')
         new_model_yaml_complete_path = base_path + '/' + new_model_yaml
         os.system(f"mv {model_yaml_complete_path} {new_model_yaml_complete_path}")
         os.system(f"tar cvf {new_merge_model_name} {new_merge_model_name_complete_path} {new_model_yaml_complete_path}")
@@ -133,14 +148,17 @@ def merge_model_on_cloud(req):
 
     return output_model_position
 
-lock = threading.RLock()
 
+import threading
+import asyncio
+
+lock = asyncio.Lock()
 
 def sagemaker_api(_, app: FastAPI):
     logger.debug("Loading Sagemaker API Endpoints.")
 
     @app.post("/invocations")
-    def invocations(req: InvocationsRequest):
+    async def invocations(req: InvocationsRequest):
         """
         Check the current state of Dreambooth processes.
         @return:
@@ -191,8 +209,7 @@ def sagemaker_api(_, app: FastAPI):
 
         try:
             if req.task == 'txt2img':
-                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img!!!!!!!!")
-                with lock:
+                async with lock:
                     print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
                     selected_models = req.models
                     checkpoint_info = req.checkpoint_info
@@ -202,8 +219,7 @@ def sagemaker_api(_, app: FastAPI):
                     print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! {len(response)}")
                     return response.json()
             elif req.task == 'img2img':
-                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img!!!!!!!!")
-                with lock:
+                async with lock:
                     print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img start!!!!!!!!")
                     selected_models = req.models
                     checkpoint_info = req.checkpoint_info
