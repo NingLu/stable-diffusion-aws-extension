@@ -153,7 +153,7 @@ def merge_model_on_cloud(req):
 import threading
 from collections import deque
 condition = threading.Condition()
-
+thread_deque = deque()
 
 
 def sagemaker_api(_, app: FastAPI):
@@ -162,13 +162,13 @@ def sagemaker_api(_, app: FastAPI):
     @app.post("/invocations")
     def invocations(req: InvocationsRequest):
         with condition:
-            if len(deque) == 0 or len(deque) > 1:
-                deque.append(req)
+            if len(thread_deque) == 0 or len(thread_deque) > 1:
+                thread_deque.append(req)
                 condition.notify_all()
             else:
                 condition.wait()
         while len(deque) > 0:
-            req = deque.popleft()
+            req = thread_deque.popleft()
             print('-------invocation------')
             print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______txt2img_payload is: ")
             txt2img_payload = {} if req.txt2img_payload is None else json.loads(req.txt2img_payload.json())
