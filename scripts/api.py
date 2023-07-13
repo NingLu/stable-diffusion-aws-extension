@@ -197,10 +197,9 @@ def sagemaker_api(_, app: FastAPI):
                     selected_models = req.models
                     checkpoint_info = req.checkpoint_info
                     checkspace_and_update_models(selected_models, checkpoint_info)
-
-                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
-                                             json=json.loads(req.txt2img_payload.json()))
-                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! ")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
+                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img', json=json.loads(req.txt2img_payload.json()))
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! {len(response)}")
                     return response.json()
             elif req.task == 'img2img':
                 print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img!!!!!!!!")
@@ -209,9 +208,9 @@ def sagemaker_api(_, app: FastAPI):
                     selected_models = req.models
                     checkpoint_info = req.checkpoint_info
                     checkspace_and_update_models(selected_models, checkpoint_info)
-                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/img2img',
-                                             json=json.loads(req.img2img_payload.json()))
-                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img end !!!!!!!!")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
+                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/img2img', json=json.loads(req.img2img_payload.json()))
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img end !!!!!!!!{len(response)}")
                     return response.json()
             elif req.task == 'interrogate_clip' or req.task == 'interrogate_deepbooru':
                 response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/interrogate',
