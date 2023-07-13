@@ -133,11 +133,10 @@ def merge_model_on_cloud(req):
 
     return output_model_position
 
+lock = threading.RLock()
 
-# condition = threading.Condition()
-# lock = threading.Lock()
 
-def sagemaker_api(_, app: FastAPI, queue_lock: threading.Lock):
+def sagemaker_api(_, app: FastAPI):
     logger.debug("Loading Sagemaker API Endpoints.")
 
     @app.post("/invocations")
@@ -192,27 +191,28 @@ def sagemaker_api(_, app: FastAPI, queue_lock: threading.Lock):
 
         try:
             if req.task == 'txt2img':
-                queue_lock.acquire()
-                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ condition!!!!!!!!")
-                selected_models = req.models
-                checkpoint_info = req.checkpoint_info
-                checkspace_and_update_models(selected_models, checkpoint_info)
-                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img condition start !!!!!!!!")
-                response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img', json=json.loads(req.txt2img_payload.json()))
-                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img condition end !!!!!!!! ")
-                queue_lock.release()
-                return response.json()
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img!!!!!!!!")
+                with lock:
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
+                    selected_models = req.models
+                    checkpoint_info = req.checkpoint_info
+                    checkspace_and_update_models(selected_models, checkpoint_info)
+
+                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
+                                             json=json.loads(req.txt2img_payload.json()))
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! ")
+                    return response.json()
             elif req.task == 'img2img':
-                queue_lock.acquire()
-                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ condition!!!!!!!!")
-                selected_models = req.models
-                checkpoint_info = req.checkpoint_info
-                checkspace_and_update_models(selected_models, checkpoint_info)
-                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img condition start!!!!!!!!")
-                response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/img2img', json=json.loads(req.img2img_payload.json()))
-                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img condition end !!!!!!!!")
-                queue_lock.release()
-                return response.json()
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img!!!!!!!!")
+                with lock:
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img start!!!!!!!!")
+                    selected_models = req.models
+                    checkpoint_info = req.checkpoint_info
+                    checkspace_and_update_models(selected_models, checkpoint_info)
+                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/img2img',
+                                             json=json.loads(req.img2img_payload.json()))
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img end !!!!!!!!")
+                    return response.json()
             elif req.task == 'interrogate_clip' or req.task == 'interrogate_deepbooru':
                 response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/interrogate',
                                          json=json.loads(req.interrogate_payload.json()))
@@ -329,7 +329,7 @@ def sagemaker_api(_, app: FastAPI, queue_lock: threading.Lock):
         except Exception as e:
             traceback.print_exc()
         finally:
-            queue_lock.release()
+            lock.release()
 
     @app.get("/ping")
     def ping():
