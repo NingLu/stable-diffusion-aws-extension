@@ -154,6 +154,7 @@ def sagemaker_api(_, app: FastAPI):
     logger.debug("Loading Sagemaker API Endpoints.")
     import threading
     from collections import deque
+    global condition
     condition = threading.Condition()
     global thread_deque
     thread_deque = deque()
