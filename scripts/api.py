@@ -328,8 +328,6 @@ def sagemaker_api(_, app: FastAPI):
                 raise NotImplementedError
         except Exception as e:
             traceback.print_exc()
-        finally:
-            lock.release()
 
     @app.get("/ping")
     def ping():
