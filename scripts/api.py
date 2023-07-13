@@ -188,7 +188,7 @@ def sagemaker_api(_, app: FastAPI):
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______models is {req.models}")
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______txt2img_payload is: ")
         txt2img_payload = {} if req.txt2img_payload is None else json.loads(req.txt2img_payload.json())
-        print(txt2img_payload)
+        print(json.loads(req.txt2img_payload.json()))
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______img2img_payload is: ")
         img2img_payload = {} if req.img2img_payload is None else json.loads(req.img2img_payload.json())
         print(img2img_payload)
@@ -215,6 +215,7 @@ def sagemaker_api(_, app: FastAPI):
                     checkpoint_info = req.checkpoint_info
                     checkspace_and_update_models(selected_models, checkpoint_info)
                     print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
+                    print(json.loads(req.txt2img_payload.json()))
                     response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img', json=json.loads(req.txt2img_payload.json()))
                     print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! {len(response)}")
                     return response.json()
