@@ -167,7 +167,7 @@ def sagemaker_api(_, app: FastAPI):
                 condition.notify_all()
             else:
                 condition.wait()
-        while len(deque) > 0:
+        while len(thread_deque) > 0:
             req = thread_deque.popleft()
             print('-------invocation------')
             print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______txt2img_payload is: ")
