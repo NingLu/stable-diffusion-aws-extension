@@ -213,7 +213,7 @@ def sagemaker_api(_, app: FastAPI):
                     response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
                                              json=json.loads(req.txt2img_payload.json()))
                     print(
-                        f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! {response.json()}")
+                        f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! {len(response.json())}")
                     return response.json()
                 elif req.task == 'img2img':
                     print(
