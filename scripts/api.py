@@ -150,15 +150,14 @@ def merge_model_on_cloud(req):
 
 
 import threading
-import asyncio
 
-lock = asyncio.Lock()
+lock = threading.RLock()
 
 def sagemaker_api(_, app: FastAPI):
     logger.debug("Loading Sagemaker API Endpoints.")
 
     @app.post("/invocations")
-    async def invocations(req: InvocationsRequest):
+    def invocations(req: InvocationsRequest):
         """
         Check the current state of Dreambooth processes.
         @return:
@@ -209,7 +208,7 @@ def sagemaker_api(_, app: FastAPI):
 
         try:
             if req.task == 'txt2img':
-                async with lock:
+                with lock:
                     print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
                     selected_models = req.models
                     checkpoint_info = req.checkpoint_info
@@ -220,7 +219,7 @@ def sagemaker_api(_, app: FastAPI):
                     print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! {len(response)}")
                     return response.json()
             elif req.task == 'img2img':
-                async with lock:
+                with lock:
                     print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img start!!!!!!!!")
                     selected_models = req.models
                     checkpoint_info = req.checkpoint_info
