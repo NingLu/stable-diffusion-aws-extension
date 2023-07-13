@@ -154,20 +154,24 @@ def sagemaker_api(_, app: FastAPI):
 
     logger.debug("Loading Sagemaker API Endpoints.")
     import threading
-    from collections import deque
-    condition = threading.Condition()
-    thread_deque = deque()
+    # from collections import deque
+    # condition = threading.Condition()
+    # thread_deque = deque()
+
+    import asyncio
+    lock = asyncio.Lock()
 
     @app.post("/invocations")
-    def invocations(req: InvocationsRequest):
-        with condition:
-            if len(thread_deque) == 0 or len(thread_deque) > 1:
-                thread_deque.append(req)
-                condition.notify_all()
-            else:
-                condition.wait()
-        while len(thread_deque) > 0:
-            req = thread_deque.popleft()
+    async def invocations(req: InvocationsRequest):
+        # with condition:
+        #     if len(thread_deque) == 0 or len(thread_deque) > 1:
+        #         thread_deque.append(req)
+        #         condition.notify_all()
+        #     else:
+        #         condition.wait()
+        # while len(thread_deque) > 0:
+        #     req = thread_deque.popleft()
+        async with lock:
             print('-------invocation------')
             print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______txt2img_payload is: ")
             txt2img_payload = {} if req.txt2img_payload is None else json.loads(req.txt2img_payload.json())
