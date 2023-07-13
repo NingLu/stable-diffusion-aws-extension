@@ -19,7 +19,7 @@ print(f"Task Type: {task_type}")
 payload = json_convert_to_payload(aigc_params, checkpoint_info, task_type)
 
 model_list = []
-model_list.append("v1-5-pruned-emaonly.safetensors")
+model_list.append("darkSushi25D25D_v30.safetensors")
 
 import psutil
 # import gc
