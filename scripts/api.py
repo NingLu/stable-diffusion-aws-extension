@@ -155,6 +155,7 @@ def sagemaker_api(_, app: FastAPI):
     import threading
     from collections import deque
     condition = threading.Condition()
+    global thread_deque
     thread_deque = deque()
     #
     # import asyncio
@@ -162,7 +163,6 @@ def sagemaker_api(_, app: FastAPI):
 
     @app.post("/invocations")
     def invocations(req: InvocationsRequest):
-        global thread_deque
         thread_deque.append(req)
         print(f"{threading.current_thread().ident}_{threading.current_thread().name} {len(thread_deque)}")
         if len(thread_deque) > 1:
