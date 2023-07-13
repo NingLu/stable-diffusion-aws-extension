@@ -150,14 +150,13 @@ def merge_model_on_cloud(req):
     return output_model_position
 
 
-import threading
-from collections import deque
-condition = threading.Condition()
-thread_deque = deque()
-
-
 def sagemaker_api(_, app: FastAPI):
+
     logger.debug("Loading Sagemaker API Endpoints.")
+    import threading
+    from collections import deque
+    condition = threading.Condition()
+    thread_deque = deque()
 
     @app.post("/invocations")
     def invocations(req: InvocationsRequest):
