@@ -166,34 +166,34 @@ def sagemaker_api(_, app: FastAPI, ):
             else:
                 print(f"{threading.current_thread().name}_______ : {payload}")
 
-        print(f"{threading.current_thread().name}_______task is {req.task}")
-        print(f"{threading.current_thread().name}_______checkpoint_info is {req.checkpoint_info}")
-        print(f"{threading.current_thread().name}_______models is {req.models}")
-        print(f"{threading.current_thread().name}_______txt2img_payload is: ")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______task is {req.task}")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______checkpoint_info is {req.checkpoint_info}")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______models is {req.models}")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______txt2img_payload is: ")
         txt2img_payload = {} if req.txt2img_payload is None else json.loads(req.txt2img_payload.json())
         show_slim_dict(txt2img_payload)
-        print(f"{threading.current_thread().name}_______img2img_payload is: ")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______img2img_payload is: ")
         img2img_payload = {} if req.img2img_payload is None else json.loads(req.img2img_payload.json())
         show_slim_dict(img2img_payload)
-        print(f"{threading.current_thread().name}_______extra_single_payload is: ")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______extra_single_payload is: ")
         extra_single_payload = {} if req.extras_single_payload is None else json.loads(req.extras_single_payload.json())
         show_slim_dict(extra_single_payload)
-        print(f"{threading.current_thread().name}_______extra_batch_payload is: ")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______extra_batch_payload is: ")
         extra_batch_payload = {} if req.extras_batch_payload is None else json.loads(req.extras_batch_payload.json())
         show_slim_dict(extra_batch_payload)
-        print(f"{threading.current_thread().name}_______interrogate_payload is: ")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______interrogate_payload is: ")
         interrogate_payload = {} if req.interrogate_payload is None else json.loads(req.interrogate_payload.json())
         show_slim_dict(interrogate_payload)
-        print(f"{threading.current_thread().name}_______db_create_model_payload is: ")
-        print(f"{threading.current_thread().name}_______{req.db_create_model_payload}")
-        print(f"{threading.current_thread().name}_______merge_checkpoint_payload is: ")
-        print(f"{threading.current_thread().name}_______{req.merge_checkpoint_payload}")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______db_create_model_payload is: ")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______{req.db_create_model_payload}")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______merge_checkpoint_payload is: ")
+        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______{req.merge_checkpoint_payload}")
         # print(f"json is {json.loads(req.json())}")
 
         if req.task == 'txt2img' or req.task == 'img2img':
-            print(f"{threading.current_thread().name} !!!!!!!!")
+            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ !!!!!!!!")
             with condition:
-                print(f"{threading.current_thread().name} condition!!!!!!!!")
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ condition!!!!!!!!")
                 selected_models = req.models
                 checkpoint_info = req.checkpoint_info
                 checkspace_and_update_models(selected_models, checkpoint_info)
@@ -201,22 +201,24 @@ def sagemaker_api(_, app: FastAPI, ):
 
         try:
             if req.task == 'txt2img':
-                print(f"{threading.current_thread().name} txt2img!!!!!!!!")
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img!!!!!!!!")
                 with condition:
-                    print(f"{threading.current_thread().name} txt2img condition!!!!!!!!")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img condition!!!!!!!!")
                     condition.wait()
-                    print(f"{threading.current_thread().name} txt2img condition start !!!!!!!!")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img condition start !!!!!!!!")
                     response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
                                              json=json.loads(req.txt2img_payload.json()))
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img condition end !!!!!!!!  {response.json()}")
                     return response.json()
             elif req.task == 'img2img':
-                print(f"{threading.current_thread().name} img2img!!!!!!!!")
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img!!!!!!!!")
                 with condition:
-                    print(f"{threading.current_thread().name} img2img condition!!!!!!!!")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img condition!!!!!!!!")
                     condition.wait()
-                    print(f"{threading.current_thread().name} img2img condition start!!!!!!!!")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img condition start!!!!!!!!")
                     response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/img2img',
                                              json=json.loads(req.img2img_payload.json()))
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img condition end !!!!!!!!  {response.json()}")
                     return response.json()
             elif req.task == 'interrogate_clip' or req.task == 'interrogate_deepbooru':
                 response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/interrogate',
