@@ -1,11 +1,6 @@
 import json
 import requests
-import io
-import base64
-from PIL import Image, PngImagePlugin
 import time
-import os
-from gradio.processing_utils import encode_pil_to_base64
 import sys
 
 sys.path.append("../../../middleware_api/lambda/inference")
