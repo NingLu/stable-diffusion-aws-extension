@@ -27,22 +27,5 @@ import psutil
 for model in model_list:
     payload["models"]["Stable-diffusion"]= [model]
     response = requests.post(url=f'{url}/invocations', json=payload)
-
     print(f'Model {model} RAM memory {psutil.virtual_memory()[2]} used: {psutil.virtual_memory()[3]/1000000000 } (GB)')
 
-    # gc.collect()
-
-# r = response.json()
-# id = 0
-# for i in r['images']:
-#     image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
-
-#     png_payload = {
-#         "image": "data:image/png;base64," + i
-#     }
-#     response2 = requests.post(url=f'{url}/sdapi/v1/png-info', json=png_payload)
-
-#     pnginfo = PngImagePlugin.PngInfo()
-#     pnginfo.add_text("parameters", response2.json().get("info"))
-#     image.save('output_%d.png'%id, pnginfo=pnginfo)
-#     id += 1
