@@ -134,10 +134,10 @@ def merge_model_on_cloud(req):
     return output_model_position
 
 
-condition = threading.Condition()
+# condition = threading.Condition()
+# lock = threading.Lock()
 
-
-def sagemaker_api(_, app: FastAPI, ):
+def sagemaker_api(_, app: FastAPI, queue_lock: threading.Lock):
     logger.debug("Loading Sagemaker API Endpoints.")
 
     @app.post("/invocations")
@@ -152,19 +152,19 @@ def sagemaker_api(_, app: FastAPI, ):
             pay_type = type(payload)
             if pay_type is dict:
                 for k, v in payload.items():
-                    print(f"{threading.current_thread().name}_______{k}")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______{k}")
                     show_slim_dict(v)
             elif pay_type is list:
                 for v in payload:
-                    print(f"{threading.current_thread().name}_______list")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______list")
                     show_slim_dict(v)
             elif pay_type is str:
                 if len(payload) > 50:
-                    print(f"{threading.current_thread().name}_______ : {len(payload)} contents")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ : {len(payload)} contents")
                 else:
-                    print(f"{threading.current_thread().name}_______ : {payload}")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ : {payload}")
             else:
-                print(f"{threading.current_thread().name}_______ : {payload}")
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ : {payload}")
 
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______task is {req.task}")
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______checkpoint_info is {req.checkpoint_info}")
@@ -190,36 +190,29 @@ def sagemaker_api(_, app: FastAPI, ):
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______{req.merge_checkpoint_payload}")
         # print(f"json is {json.loads(req.json())}")
 
-        if req.task == 'txt2img' or req.task == 'img2img':
-            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ !!!!!!!!")
-            with condition:
+        try:
+            if req.task == 'txt2img':
+                queue_lock.acquire()
                 print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ condition!!!!!!!!")
                 selected_models = req.models
                 checkpoint_info = req.checkpoint_info
                 checkspace_and_update_models(selected_models, checkpoint_info)
-                condition.notify()
-
-        try:
-            if req.task == 'txt2img':
-                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img!!!!!!!!")
-                with condition:
-                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img condition!!!!!!!!")
-                    condition.wait()
-                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img condition start !!!!!!!!")
-                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
-                                             json=json.loads(req.txt2img_payload.json()))
-                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img condition end !!!!!!!!  {response.json()}")
-                    return response.json()
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img condition start !!!!!!!!")
+                response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img', json=json.loads(req.txt2img_payload.json()))
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img condition end !!!!!!!! ")
+                queue_lock.release()
+                return response.json()
             elif req.task == 'img2img':
-                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img!!!!!!!!")
-                with condition:
-                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img condition!!!!!!!!")
-                    condition.wait()
-                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img condition start!!!!!!!!")
-                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/img2img',
-                                             json=json.loads(req.img2img_payload.json()))
-                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img condition end !!!!!!!!  {response.json()}")
-                    return response.json()
+                queue_lock.acquire()
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ condition!!!!!!!!")
+                selected_models = req.models
+                checkpoint_info = req.checkpoint_info
+                checkspace_and_update_models(selected_models, checkpoint_info)
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img condition start!!!!!!!!")
+                response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/img2img', json=json.loads(req.img2img_payload.json()))
+                print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img condition end !!!!!!!!")
+                queue_lock.release()
+                return response.json()
             elif req.task == 'interrogate_clip' or req.task == 'interrogate_deepbooru':
                 response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/interrogate',
                                          json=json.loads(req.interrogate_payload.json()))
@@ -335,6 +328,8 @@ def sagemaker_api(_, app: FastAPI, ):
                 raise NotImplementedError
         except Exception as e:
             traceback.print_exc()
+        finally:
+            queue_lock.release()
 
     @app.get("/ping")
     def ping():
