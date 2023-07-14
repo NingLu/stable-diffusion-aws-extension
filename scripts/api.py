@@ -8,12 +8,8 @@ import copy
 
 from fastapi import FastAPI
 
-import asyncio
-import aiohttp
-
 # from modules import sd_hijack, sd_models, sd_vae, script_loading, paths
 from modules import sd_models
-# import modules.shared as shared
 import modules.extras
 import sys
 from aws_extension.models import InvocationsRequest
@@ -33,21 +29,6 @@ except Exception as e:
     logging.warning("[api]Dreambooth is not installed or can not be imported, using dummy function to proceed.")
     dreambooth_available = False
     create_model = dummy_function
-# try:
-#     from dreambooth import shared
-#     from dreambooth.dataclasses.db_concept import Concept
-#     from dreambooth.dataclasses.db_config import from_file, DreamboothConfig
-#     from dreambooth.diff_to_sd import compile_checkpoint
-#     from dreambooth.secret import get_secret
-#     from dreambooth.shared import DreamState
-#     from dreambooth.ui_functions import create_model, generate_samples, \
-#         start_training
-#     from dreambooth.utils.gen_utils import generate_classifiers
-#     from dreambooth.utils.image_utils import get_images
-#     from dreambooth.utils.model_utils import get_db_models, get_lora_models
-# except:
-#     print("Exception importing api")
-#     traceback.print_exc()
 
 if os.environ.get("DEBUG_API", False):
     logging.basicConfig(level=logging.DEBUG)
@@ -105,10 +86,10 @@ def merge_model_on_cloud(req):
 
     print(f"sd model checkpoint list is {sd_models.checkpoints_list}")
 
-    [primary_model_name, secondary_model_name, tertiary_model_name, component_dict_sd_model_checkpoints, modelmerger_result] = \
-        modelmerger("fake_id_task", primary_model_name, secondary_model_name, tertiary_model_name, \
-        interp_method, interp_amount, save_as_half, custom_name, checkpoint_format, config_source, \
-        bake_in_vae, discard_weights, save_metadata)
+    [primary_model_name, secondary_model_name, tertiary_model_name, component_dict_sd_model_checkpoints,
+     modelmerger_result] = modelmerger("fake_id_task", primary_model_name, secondary_model_name, tertiary_model_name,
+                                       interp_method, interp_amount, save_as_half, custom_name, checkpoint_format,
+                                       config_source, bake_in_vae, discard_weights, save_metadata)
 
     output_model_position = modelmerger_result[20:]
 
@@ -158,108 +139,62 @@ def sagemaker_api(_, app: FastAPI):
     condition = threading.Condition()
     global thread_deque
     thread_deque = deque()
-    #
-    # import asyncio
-    # lock = asyncio.Lock()
 
     @app.post("/invocations")
     def invocations(req: InvocationsRequest):
         with condition:
             thread_deque.append(req)
-            print(f"outside {threading.active_count()}")
-            print(f"outside {threading.current_thread()}")
             print(f"{threading.current_thread().ident}_{threading.current_thread().name} {len(thread_deque)}")
             if len(thread_deque) > 1:
-                print(f"inside {threading.active_count()}")
                 print(f"wait {threading.current_thread().ident}_{threading.current_thread().name} {len(thread_deque)}")
                 condition.wait(timeout=100000)
-
             print('-------invocation------')
-            print(f"outside1 {threading.active_count()}")
-            print(f"outside1 {threading.current_thread()}")
-            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______txt2img_payload is: ")
             txt2img_payload = {} if req.txt2img_payload is None else json.loads(req.txt2img_payload.json())
-            print(json.loads(req.txt2img_payload.json()))
-            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______img2img_payload is: ")
+            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______txt2img_payload is: {txt2img_payload}")
             img2img_payload = {} if req.img2img_payload is None else json.loads(req.img2img_payload.json())
-            print(img2img_payload)
-            print(
-                f"{threading.current_thread().ident}_{threading.current_thread().name}_______extra_single_payload is: ")
-            extra_single_payload = {} if req.extras_single_payload is None else json.loads(
-                req.extras_single_payload.json())
-            print(extra_single_payload)
-            print(
-                f"{threading.current_thread().ident}_{threading.current_thread().name}_______extra_batch_payload is: ")
-            extra_batch_payload = {} if req.extras_batch_payload is None else json.loads(
-                req.extras_batch_payload.json())
-            print(extra_batch_payload)
-            print(
-                f"{threading.current_thread().ident}_{threading.current_thread().name}_______interrogate_payload is: ")
+            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______img2img_payload is: {img2img_payload}")
+            extra_single_payload = {} if req.extras_single_payload is None else json.loads(req.extras_single_payload.json())
+            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______extra_single_payload is: {extra_single_payload}")
+            extra_batch_payload = {} if req.extras_batch_payload is None else json.loads(req.extras_batch_payload.json())
+            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______extra_batch_payload is: {extra_batch_payload}")
+
             interrogate_payload = {} if req.interrogate_payload is None else json.loads(req.interrogate_payload.json())
-            print(interrogate_payload)
-            print(
-                f"{threading.current_thread().ident}_{threading.current_thread().name}_______db_create_model_payload is: ")
-            print(
-                f"{threading.current_thread().ident}_{threading.current_thread().name}_______{req.db_create_model_payload}")
-            print(
-                f"{threading.current_thread().ident}_{threading.current_thread().name}_______merge_checkpoint_payload is: ")
-            print(
-                f"{threading.current_thread().ident}_{threading.current_thread().name}_______{req.merge_checkpoint_payload}")
+            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______interrogate_payload is: {interrogate_payload}")
+            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______db_create_model_payload is: {req.db_create_model_payload}")
+            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______merge_checkpoint_payload is: {req.merge_checkpoint_payload}")
             # print(f"json is {json.loads(req.json())}")
 
             try:
                 if req.task == 'txt2img':
-                    print(f"outside2 {threading.active_count()}")
-                    print(f"outside2 {threading.current_thread()}")
-                    print(
-                        f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
                     selected_models = req.models
                     checkpoint_info = req.checkpoint_info
                     checkspace_and_update_models(selected_models, checkpoint_info)
-                    print(
-                        f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
                     print(json.loads(req.txt2img_payload.json()))
                     response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
                                              json=json.loads(req.txt2img_payload.json()))
-                    print(
-                        f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! {len(response.json())}")
-                    req = thread_deque.popleft()
-                    print(f"outside3 {threading.active_count()}")
-                    print(f"outside3 {threading.current_thread()}")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! {len(response.json())}")
+                    thread_deque.popleft()
                     condition.notify()
                     return response.json()
-                    # async def txt2img(req):
-                    #     selected_models = req.models
-                    #     checkpoint_info = req.checkpoint_info
-                    #     checkspace_and_update_models(selected_models, checkpoint_info)
-                    #     async with aiohttp.ClientSession() as session:
-                    #         async with session.post('http://0.0.0.0:8080/sdapi/v1/txt2img',
-                    #                                 json=json.loads(req.txt2img_payload.json())) as response:
-                    #             print("Status:", response.status)
-                    #             print("Content-type:", response.headers['content-type'])
-                    #
-                    #             json_body = await response.json()
-                    #
-                    #             return json_body
-                    #
-                    # json_body = asyncio.run(txt2img(req))
-                    # return json_body
                 elif req.task == 'img2img':
-                    print(
-                        f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img start!!!!!!!!")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img start!!!!!!!!")
                     selected_models = req.models
                     checkpoint_info = req.checkpoint_info
                     checkspace_and_update_models(selected_models, checkpoint_info)
-                    print(
-                        f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
                     response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/img2img',
                                              json=json.loads(req.img2img_payload.json()))
-                    print(
-                        f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img end !!!!!!!!{len(response.json())}")
+                    print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img end !!!!!!!!{len(response.json())}")
+                    thread_deque.popleft()
+                    condition.notify()
                     return response.json()
                 elif req.task == 'interrogate_clip' or req.task == 'interrogate_deepbooru':
                     response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/interrogate',
                                              json=json.loads(req.interrogate_payload.json()))
+                    thread_deque.popleft()
+                    condition.notify()
                     return response.json()
                 elif req.task == 'db-create-model':
                     r"""
@@ -357,6 +292,8 @@ def sagemaker_api(_, app: FastAPI):
                         os.system(delete_tgt_command)
                         logging.info("Check disk usage after request.")
                         os.system("df -h")
+                        thread_deque.popleft()
+                        condition.notify()
                 elif req.task == 'merge-checkpoint':
                     try:
 
@@ -370,6 +307,8 @@ def sagemaker_api(_, app: FastAPI):
 
                     except Exception as e:
                         traceback.print_exc()
+                    thread_deque.popleft()
+                    condition.notify()
                 else:
                     raise NotImplementedError
             except Exception as e:
@@ -378,9 +317,6 @@ def sagemaker_api(_, app: FastAPI):
     @app.get("/ping")
     def ping():
         return {'status': 'Healthy'}
-
-
-import hashlib
 
 
 def md5(fname):
