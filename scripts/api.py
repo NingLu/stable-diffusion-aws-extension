@@ -177,9 +177,9 @@ def sagemaker_api(_, app: FastAPI):
 
             try:
                 if req.task == 'txt2img':
-                    task1 = tg.create_task(opt_txt2img(req))
-                    # await opt_txt2img(req)
-                    await task1
+                    # task1 = tg.create_task(opt_txt2img(req))
+                    await opt_txt2img(req)
+                    # await task1
                     # return await opt_txt2img(req)
                 elif req.task == 'img2img':
                     task2 = tg.tg.create_task(opt_img2img(req))
