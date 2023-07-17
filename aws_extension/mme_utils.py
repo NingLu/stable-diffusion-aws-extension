@@ -21,7 +21,9 @@ models_path['Lora'] = 'models/Lora'
 models_path['embeddings'] = 'embeddings'
 disk_path = '/tmp'
 #disk_path = '/'
-def checkspace_and_update_models(selected_models, checkpoint_info):
+
+
+async def checkspace_and_update_models(selected_models, checkpoint_info):
     models_num = len(models_type_list)
     space_free_size = selected_models['space_free_size']
     # os.system("df -h")
@@ -31,7 +33,7 @@ def checkspace_and_update_models(selected_models, checkpoint_info):
         local_models = []
         for path, subdirs, files in os.walk(models_path[model_type]):
             for name in files:
-                full_path_name = os.path.join(path, name) 
+                full_path_name = os.path.join(path, name)
                 name_local = os.path.relpath(full_path_name, models_path[model_type])
                 local_models.append(name_local)
         for selected_model_name in selected_models_name:
@@ -73,9 +75,9 @@ def checkspace_and_update_models(selected_models, checkpoint_info):
                         print('can not get enough space to download models!!!!!!')
                         return
                 ####down load models######
-                selected_model_s3_pos = checkpoint_info[model_type][selected_model_name] 
+                selected_model_s3_pos = checkpoint_info[model_type][selected_model_name]
                 download_and_update(model_type, selected_model_name, selected_model_s3_pos)
-    
+
     shared.opts.sd_model_checkpoint = selected_models['Stable-diffusion'][0]
     import psutil
     sd_models.reload_model_weights()
