@@ -137,9 +137,27 @@ def sagemaker_api(_, app: FastAPI):
     import asyncio
     import aiohttp
 
+    def show_slim_dict(payload):
+        pay_type = type(payload)
+        if pay_type is dict:
+            for k, v in payload.items():
+                print(f"{k}")
+                show_slim_dict(v)
+        elif pay_type is list:
+            for v in payload:
+                print(f"list")
+                show_slim_dict(v)
+        elif pay_type is str:
+            if len(payload) > 50:
+                print(f" : {len(payload)} contents")
+            else:
+                print(f" : {payload}")
+        else:
+            print(f" : {payload}")
 
     @app.post("/invocations")
     async def invocations(req: InvocationsRequest):
+
         async with asyncio.TaskGroup() as tg:
 
             print('-------invocation------')
@@ -159,9 +177,9 @@ def sagemaker_api(_, app: FastAPI):
 
             try:
                 if req.task == 'txt2img':
-                    # task1 = tg.create_task(opt_txt2img(req))
-                    await opt_txt2img(req)
-                    # await task1
+                    task1 = tg.create_task(opt_txt2img(req))
+                    # await opt_txt2img(req)
+                    await task1
                     # return await opt_txt2img(req)
                 elif req.task == 'img2img':
                     task2 = tg.tg.create_task(opt_img2img(req))
@@ -333,9 +351,7 @@ def sagemaker_api(_, app: FastAPI):
                                         json=json.loads(req.txt2img_payload.json())) as response:
                     print("Status:", response.status)
                     print("Content-type:", response.headers['content-type'])
-
                     json_body = await response.json()
-
                     return json_body
 
         # json_body = asyncio.run(txt2img(req))
@@ -346,9 +362,9 @@ def sagemaker_api(_, app: FastAPI):
             checkspace_and_update_models(selected_models, checkpoint_info),
             txt2img(req)
         )
-        print(response)
-        print(response.index(1))
-        return response.index(1)
+        print(show_slim_dict(response))
+        # print(response.index(1))
+        return response
         # return response.json()
 
     @app.get("/ping")
