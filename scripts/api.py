@@ -135,6 +135,7 @@ def sagemaker_api(_, app: FastAPI):
     logger.debug("Loading Sagemaker API Endpoints.")
     import threading
     import asyncio
+    import aiohttp
 
 
     @app.post("/invocations")
@@ -320,23 +321,35 @@ def sagemaker_api(_, app: FastAPI):
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
         selected_models = req.models
         checkpoint_info = req.checkpoint_info
-        checkspace_and_update_models(selected_models, checkpoint_info)
+        # checkspace_and_update_models(selected_models, checkpoint_info)
         print(
             f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
         print(json.loads(req.txt2img_payload.json()))
-        response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
-                                 json=json.loads(req.txt2img_payload.json()))
+        # response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
+        #                          json=json.loads(req.txt2img_payload.json()))
+        async def txt2img(req):
+            async with aiohttp.ClientSession() as session:
+                async with session.post('http://0.0.0.0:8080/sdapi/v1/txt2img',
+                                        json=json.loads(req.txt2img_payload.json())) as response:
+                    print("Status:", response.status)
+                    print("Content-type:", response.headers['content-type'])
+
+                    json_body = await response.json()
+
+                    return json_body
+
+        # json_body = asyncio.run(txt2img(req))
+        # return json_body
         print(
             f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! ")
-        # response = await asyncio.gather(
-        #     checkspace_and_update_models(selected_models, checkpoint_info),
-        #     requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
-        #                   json=json.loads(req.txt2img_payload.json()))
-        # )
+        response = await asyncio.gather(
+            checkspace_and_update_models(selected_models, checkpoint_info),
+            txt2img(req)
+        )
         print(response)
-        # print(response.index(1))
-        # return response.index(1)
-        return response.json()
+        print(response.index(1))
+        return response.index(1)
+        # return response.json()
 
     @app.get("/ping")
     def ping():
