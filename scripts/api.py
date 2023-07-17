@@ -138,22 +138,29 @@ def sagemaker_api(_, app: FastAPI):
     import aiohttp
 
     def show_slim_dict(payload):
+        strvalue = ""
         pay_type = type(payload)
         if pay_type is dict:
             for k, v in payload.items():
-                print(f"{k}")
-                show_slim_dict(v)
+                # print(f"{k}")
+                strvalue += f"   {k}:"
+                strvalue += show_slim_dict(v)
         elif pay_type is list:
             for v in payload:
-                print(f"list")
-                show_slim_dict(v)
+                # print(f"list")
+                strvalue += f"  list:"
+                strvalue += show_slim_dict(v)
         elif pay_type is str:
             if len(payload) > 50:
-                print(f" : {len(payload)} contents")
+                # print(f" : {len(payload)} contents")
+                strvalue += f" : {len(payload)} contents"
             else:
-                print(f" : {payload}")
+                # print(f" : {payload}")
+                strvalue += f" : {payload}"
         else:
-            print(f" : {payload}")
+            # print(f" : {payload}")
+            strvalue += f" : {payload}"
+        print(strvalue)
 
     @app.post("/invocations")
     async def invocations(req: InvocationsRequest):

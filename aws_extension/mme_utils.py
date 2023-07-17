@@ -75,6 +75,10 @@ async def checkspace_and_update_models(selected_models, checkpoint_info):
                         print('can not get enough space to download models!!!!!!')
                         return
                 ####down load models######
+                if checkpoint_info[model_type] is None:
+                    continue
+                if checkpoint_info[model_type][selected_model_name] is None:
+                    continue
                 selected_model_s3_pos = checkpoint_info[model_type][selected_model_name]
                 download_and_update(model_type, selected_model_name, selected_model_s3_pos)
 
