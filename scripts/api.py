@@ -320,23 +320,23 @@ def sagemaker_api(_, app: FastAPI):
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
         selected_models = req.models
         checkpoint_info = req.checkpoint_info
-        # checkspace_and_update_models(selected_models, checkpoint_info)
+        checkspace_and_update_models(selected_models, checkpoint_info)
         print(
             f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
         print(json.loads(req.txt2img_payload.json()))
-        # response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
-        #                          json=json.loads(req.txt2img_payload.json()))
+        response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
+                                 json=json.loads(req.txt2img_payload.json()))
         print(
             f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! ")
-        response = await asyncio.gather(
-            checkspace_and_update_models(selected_models, checkpoint_info),
-            requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
-                          json=json.loads(req.txt2img_payload.json()))
-        )
+        # response = await asyncio.gather(
+        #     checkspace_and_update_models(selected_models, checkpoint_info),
+        #     requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
+        #                   json=json.loads(req.txt2img_payload.json()))
+        # )
         print(response)
-        print(response.index(1))
-        return response.index(1)
-        # return response.json()
+        # print(response.index(1))
+        # return response.index(1)
+        return response.json()
 
     @app.get("/ping")
     def ping():
