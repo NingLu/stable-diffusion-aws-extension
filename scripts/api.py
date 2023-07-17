@@ -353,17 +353,13 @@ def sagemaker_api(_, app: FastAPI):
         # response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
         #                          json=json.loads(req.txt2img_payload.json()))
         async def txt2img(req):
-            response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
-                                     json=json.loads(req.txt2img_payload.json()))
-            return response
-
-            # async with aiohttp.ClientSession() as session:
-            #     async with session.post('http://0.0.0.0:8080/sdapi/v1/txt2img',
-            #                             json=json.loads(req.txt2img_payload.json())) as response:
-            #         print("Status:", response.status)
-            #         print("Content-type:", response.headers['content-type'])
-            #         json_body = await response.json()
-            #         return json_body
+            async with aiohttp.ClientSession() as session:
+                async with session.post('http://0.0.0.0:8080/sdapi/v1/txt2img',
+                                        json=json.loads(req.txt2img_payload.json())) as response:
+                    print("Status:", response.status)
+                    print("Content-type:", response.headers['content-type'])
+                    json_body = await response.json()
+                    return json_body
 
         # json_body = asyncio.run(txt2img(req))
         # return json_body
