@@ -184,9 +184,9 @@ def sagemaker_api(_, app: FastAPI):
 
             try:
                 if req.task == 'txt2img':
-                    # task1 = tg.create_task(opt_txt2img(req))
-                    await opt_txt2img(req)
-                    # await task1
+                    task1 = tg.create_task(opt_txt2img(req))
+                    # await opt_txt2img(req)
+                    await task1
                     # return await opt_txt2img(req)
                 elif req.task == 'img2img':
                     task2 = tg.tg.create_task(opt_img2img(req))
@@ -346,7 +346,7 @@ def sagemaker_api(_, app: FastAPI):
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
         selected_models = req.models
         checkpoint_info = req.checkpoint_info
-        # checkspace_and_update_models(selected_models, checkpoint_info)
+        await checkspace_and_update_models(selected_models, checkpoint_info)
         print(
             f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
         print(json.loads(req.txt2img_payload.json()))
@@ -363,13 +363,14 @@ def sagemaker_api(_, app: FastAPI):
 
         # json_body = asyncio.run(txt2img(req))
         # return json_body
+        response = await txt2img(req)
         print(
             f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! ")
-        response = await asyncio.gather(
-            checkspace_and_update_models(selected_models, checkpoint_info),
-            txt2img(req)
-        )
-        print(show_slim_dict(response))
+        # response = await asyncio.gather(
+        #     checkspace_and_update_models(selected_models, checkpoint_info),
+        #     txt2img(req)
+        # )
+        # print(show_slim_dict(response))
         # print(response.index(1))
         return response
         # return response.json()
