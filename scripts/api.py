@@ -311,8 +311,9 @@ def sagemaker_api(_, app: FastAPI):
             requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
                           json=json.loads(req.img2img_payload.json()))
         )
-        print(response)
-        # return response.json()
+        print(response.count())
+        print(response.index(1))
+        return response
 
     async def opt_txt2img(req):
         print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
@@ -332,7 +333,8 @@ def sagemaker_api(_, app: FastAPI):
                           json=json.loads(req.txt2img_payload.json()))
         )
         print(response)
-
+        print(response.index(1))
+        return response.index(1)
         # return response.json()
 
     @app.get("/ping")
