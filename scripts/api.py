@@ -144,12 +144,12 @@ def sagemaker_api(_, app: FastAPI):
             for k, v in payload.items():
                 # print(f"{k}")
                 strvalue += f"   {k}:"
-                strvalue += show_slim_dict(v)
+                strvalue += str(show_slim_dict(v))
         elif pay_type is list:
             for v in payload:
                 # print(f"list")
                 strvalue += f"  list:"
-                strvalue += show_slim_dict(v)
+                strvalue += str(show_slim_dict(v))
         elif pay_type is str:
             if len(payload) > 50:
                 # print(f" : {len(payload)} contents")
