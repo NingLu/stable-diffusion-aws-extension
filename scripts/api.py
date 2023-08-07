@@ -6,18 +6,23 @@ import traceback
 import time
 import copy
 
+import requests
 from fastapi import FastAPI
 
-# from modules import sd_hijack, sd_models, sd_vae, script_loading, paths
 from modules import sd_models
 import modules.extras
 import sys
 from aws_extension.models import InvocationsRequest
 from aws_extension.mme_utils import checkspace_and_update_models, download_model, models_path
 import requests
-from utils import get_bucket_name_from_s3_path, get_path_from_s3_path, download_folder_from_s3_by_tar, upload_folder_to_s3_by_tar
+from utils import get_bucket_name_from_s3_path, get_path_from_s3_path, download_folder_from_s3_by_tar, \
+    upload_folder_to_s3_by_tar, read_from_s3
 
 dreambooth_available = True
+THREAD_CHECK_COUNT = 1
+CONDITION_POOL_MAX_COUNT = 10
+CONDITION_WAIT_TIME_OUT = 100000
+
 
 def dummy_function(*args, **kwargs):
     return None
@@ -29,6 +34,21 @@ except Exception as e:
     logging.warning("[api]Dreambooth is not installed or can not be imported, using dummy function to proceed.")
     dreambooth_available = False
     create_model = dummy_function
+# try:
+#     from dreambooth import shared
+#     from dreambooth.dataclasses.db_concept import Concept
+#     from dreambooth.dataclasses.db_config import from_file, DreamboothConfig
+#     from dreambooth.diff_to_sd import compile_checkpoint
+#     from dreambooth.secret import get_secret
+#     from dreambooth.shared import DreamState
+#     from dreambooth.ui_functions import create_model, generate_samples, \
+#         start_training
+#     from dreambooth.utils.gen_utils import generate_classifiers
+#     from dreambooth.utils.image_utils import get_images
+#     from dreambooth.utils.model_utils import get_db_models, get_lora_models
+# except:
+#     logger.info("Exception importing api")
+#     traceback.print_exc()
 
 if os.environ.get("DEBUG_API", False):
     logging.basicConfig(level=logging.DEBUG)
@@ -41,8 +61,8 @@ def merge_model_on_cloud(req):
         try:
             results = modules.extras.run_modelmerger(*args)
         except Exception as e:
-            print(f"Error loading/saving model file: {e}")
-            print(traceback.format_exc(), file=sys.stderr)
+            logger.info(f"Error loading/saving model file: {e}")
+            logger.info(traceback.format_exc(), file=sys.stderr)
             # modules.sd_models.list_models()  # to remove the potentially missing models from the list
             return [None, None, None, None, f"Error merging checkpoints: {e}"]
         return results
@@ -84,12 +104,12 @@ def merge_model_on_cloud(req):
         if raw_name == tertiary_model_name:
             tertiary_model_name = model_name
 
-    print(f"sd model checkpoint list is {sd_models.checkpoints_list}")
+    logger.info(f"sd model checkpoint list is {sd_models.checkpoints_list}")
 
-    [primary_model_name, secondary_model_name, tertiary_model_name, component_dict_sd_model_checkpoints,
-     modelmerger_result] = modelmerger("fake_id_task", primary_model_name, secondary_model_name, tertiary_model_name,
-                                       interp_method, interp_amount, save_as_half, custom_name, checkpoint_format,
-                                       config_source, bake_in_vae, discard_weights, save_metadata)
+    [primary_model_name, secondary_model_name, tertiary_model_name, component_dict_sd_model_checkpoints, modelmerger_result] = \
+        modelmerger("fake_id_task", primary_model_name, secondary_model_name, tertiary_model_name, \
+        interp_method, interp_amount, save_as_half, custom_name, checkpoint_format, config_source, \
+        bake_in_vae, discard_weights, save_metadata)
 
     output_model_position = modelmerger_result[20:]
 
@@ -111,7 +131,7 @@ def merge_model_on_cloud(req):
     model_yaml = (merge_model_name[:-len(merge_model_name.split('.')[-1])]+'yaml').replace('(','\(').replace(')','\)')
     model_yaml_complete_path = base_path + '/' + model_yaml
 
-    print(f"m {merge_model_name_complete_path}, n_m {new_merge_model_name_complete_path}, yaml {model_yaml_complete_path}")
+    logger.info(f"m {merge_model_name_complete_path}, n_m {new_merge_model_name_complete_path}, yaml {model_yaml_complete_path}")
 
     if yaml_states:
         new_model_yaml = model_yaml.replace('(','_').replace(')','_')
@@ -125,268 +145,233 @@ def merge_model_on_cloud(req):
     os.system(f'rm {new_merge_model_name_complete_path}')
     os.system(f'rm {new_model_yaml_complete_path}')
 
-    print(f"output model path is {output_model_position}")
+    logger.info(f"output model path is {output_model_position}")
 
     return output_model_position
 
 
 def sagemaker_api(_, app: FastAPI):
-
     logger.debug("Loading Sagemaker API Endpoints.")
     import threading
-    import asyncio
-    import aiohttp
-
-    def show_slim_dict(payload):
-        strvalue = ""
-        pay_type = type(payload)
-        if pay_type is dict:
-            for k, v in payload.items():
-                # print(f"{k}")
-                strvalue += f"   {k}:"
-                strvalue += str(show_slim_dict(v))
-        elif pay_type is list:
-            for v in payload:
-                # print(f"list")
-                strvalue += f"  list:"
-                strvalue += str(show_slim_dict(v))
-        elif pay_type is str:
-            if len(payload) > 50:
-                # print(f" : {len(payload)} contents")
-                strvalue += f" : {len(payload)} contents"
-            else:
-                # print(f" : {payload}")
-                strvalue += f" : {payload}"
-        else:
-            # print(f" : {payload}")
-            strvalue += f" : {payload}"
-        print(strvalue)
+    from collections import deque
+    global condition
+    condition = threading.Condition()
+    global thread_deque
+    thread_deque = deque()
 
     @app.post("/invocations")
-    async def invocations(req: InvocationsRequest):
+    def invocations(req: InvocationsRequest):
+        """
+        Check the current state of Dreambooth processes.
+        @return:
+        """
+        logger.info('-------invocation------')
 
-        async with asyncio.TaskGroup() as tg:
+        def show_slim_dict(payload):
+            pay_type = type(payload)
+            if pay_type is dict:
+                for k, v in payload.items():
+                    logger.info(f"{k}")
+                    show_slim_dict(v)
+            elif pay_type is list:
+                for v in payload:
+                    logger.info(f"list")
+                    show_slim_dict(v)
+            elif pay_type is str:
+                if len(payload) > 50:
+                    logger.info(f" : {len(payload)} contents")
+                else:
+                    logger.info(f" : {payload}")
+            else:
+                logger.info(f" : {payload}")
 
-            print('-------invocation------')
-            txt2img_payload = {} if req.txt2img_payload is None else json.loads(req.txt2img_payload.json())
-            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______txt2img_payload is: {txt2img_payload}")
-            img2img_payload = {} if req.img2img_payload is None else json.loads(req.img2img_payload.json())
-            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______img2img_payload is: {img2img_payload}")
-            extra_single_payload = {} if req.extras_single_payload is None else json.loads(req.extras_single_payload.json())
-            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______extra_single_payload is: {extra_single_payload}")
-            extra_batch_payload = {} if req.extras_batch_payload is None else json.loads(req.extras_batch_payload.json())
-            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______extra_batch_payload is: {extra_batch_payload}")
+        with condition:
+            thread_deque.append(req)
+            logger.info(f"{threading.current_thread().ident}_{threading.current_thread().name} {len(thread_deque)}")
+            if len(thread_deque) > THREAD_CHECK_COUNT and len(thread_deque) <= CONDITION_POOL_MAX_COUNT:
+                logger.info(f"wait {threading.current_thread().ident}_{threading.current_thread().name} {len(thread_deque)}")
+                condition.wait(timeout=CONDITION_WAIT_TIME_OUT)
+            elif len(thread_deque) > CONDITION_POOL_MAX_COUNT:
+                logger.info(f"waiting thread too much in condition pool {len(thread_deque)}, max: {CONDITION_POOL_MAX_COUNT}")
+                raise MemoryError
+
+            print(f'current version: dev')
+            logger.info(f"task is {req.task}")
+            logger.info(f"models is {req.models}")
+            payload = {}
+            if req.param_s3:
+                def parse_constant(c: str) -> float:
+                    if c == "NaN":
+                        raise ValueError("NaN is not valid JSON")
+
+                    if c == 'Infinity':
+                        return sys.float_info.max
+
+                    return float(c)
+
+                payload = json.loads(read_from_s3(req.param_s3), parse_constant=parse_constant)
+                show_slim_dict(payload)
+
+            logger.info(f"extra_single_payload is: ")
+            extra_single_payload = {} if req.extras_single_payload is None else json.loads(
+                req.extras_single_payload.json())
+            show_slim_dict(extra_single_payload)
+            logger.info(f"extra_batch_payload is: ")
+            extra_batch_payload = {} if req.extras_batch_payload is None else json.loads(
+                req.extras_batch_payload.json())
+            show_slim_dict(extra_batch_payload)
+            logger.info(f"interrogate_payload is: ")
             interrogate_payload = {} if req.interrogate_payload is None else json.loads(req.interrogate_payload.json())
-            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______interrogate_payload is: {interrogate_payload}")
-            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______db_create_model_payload is: {req.db_create_model_payload}")
-            print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______merge_checkpoint_payload is: {req.merge_checkpoint_payload}")
-            # print(f"json is {json.loads(req.json())}")
-
+            show_slim_dict(interrogate_payload)
+            # logger.info(f"db_create_model_payload is: ")
+            # logger.info(f"{req.db_create_model_payload}")
+            # logger.info(f"merge_checkpoint_payload is: ")
+            # logger.info(f"{req.merge_checkpoint_payload}")
+            # logger.info(f"json is {json.loads(req.json())}")
             try:
                 if req.task == 'txt2img':
-                    task1 = tg.create_task(opt_txt2img(req))
-                    # await opt_txt2img(req)
-                    await task1
-                    # return await opt_txt2img(req)
+                    logger.info(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
+                    checkspace_and_update_models(req.models)
+                    logger.info(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
+                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
+                                             json=payload)
+                    logger.info(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! {len(response.json())}")
+                    return response.json()
                 elif req.task == 'img2img':
-                    task2 = tg.tg.create_task(opt_img2img(req))
-                    await task2
-                    # return await opt_img2img(req)
+                    logger.info(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img start!!!!!!!!")
+                    checkspace_and_update_models(req.models)
+                    logger.info(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
+                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/img2img',
+                                             json=payload)
+                    logger.info(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img end !!!!!!!!{len(response.json())}")
+                    return response.json()
                 elif req.task == 'interrogate_clip' or req.task == 'interrogate_deepbooru':
-                    task3 = tg.create_task(opt_interrogate_clip(req))
-                    await task3
-                    # return await opt_interrogate_clip(req)
+                    response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/interrogate',
+                                             json=json.loads(req.interrogate_payload.json()))
+                    return response.json()
                 elif req.task == 'db-create-model':
-                    task4 = tg.create_task(create_db_model(req))
-                    await task4
-                    # return await create_db_model(req)
+                    r"""
+                    task: db-create-model
+                    db_create_model_payload:
+                        :s3_input_path: S3 path for download src model.
+                        :s3_output_path: S3 path for upload generated model.
+                        :ckpt_from_cloud: Whether to get ckpt from cloud or local.
+                        :job_id: job id.
+                        :param
+                            :new_model_name: generated model name.
+                            :ckpt_path: S3 path for download src model.
+                            :db_new_model_shared_src="",
+                            :from_hub=False,
+                            :new_model_url="",
+                            :new_model_token="",
+                            :extract_ema=False,
+                            :train_unfrozen=False,
+                            :is_512=True,
+                    """
+                    try:
+                        db_create_model_payload = json.loads(req.db_create_model_payload)
+                        job_id = db_create_model_payload["job_id"]
+                        s3_output_path = db_create_model_payload["s3_output_path"]
+                        output_bucket_name = get_bucket_name_from_s3_path(s3_output_path)
+                        output_path = get_path_from_s3_path(s3_output_path)
+                        db_create_model_params = db_create_model_payload["param"]["create_model_params"]
+                        if "ckpt_from_cloud" in db_create_model_payload["param"]:
+                            ckpt_from_s3 = db_create_model_payload["param"]["ckpt_from_cloud"]
+                        else:
+                            ckpt_from_s3 = False
+                        if not db_create_model_params['from_hub']:
+                            if ckpt_from_s3:
+                                s3_input_path = db_create_model_payload["param"]["s3_ckpt_path"]
+                                local_model_path = db_create_model_params["ckpt_path"]
+                                input_path = get_path_from_s3_path(s3_input_path)
+                                logger.info(f"ckpt from s3 {input_path} {local_model_path}")
+                            else:
+                                s3_input_path = db_create_model_payload["s3_input_path"]
+                                local_model_path = db_create_model_params["ckpt_path"]
+                                input_path = os.path.join(get_path_from_s3_path(s3_input_path), local_model_path)
+                                logger.info(f"ckpt from local {input_path} {local_model_path}")
+                            input_bucket_name = get_bucket_name_from_s3_path(s3_input_path)
+                            logging.info("Check disk usage before download.")
+                            os.system("df -h")
+                            logger.info(f"Download src model from s3 {input_bucket_name} {input_path} {local_model_path}")
+                            download_folder_from_s3_by_tar(input_bucket_name, input_path, local_model_path)
+                            # Refresh the ckpt list.
+                            sd_models.list_models()
+                            logger.info("Check disk usage after download.")
+                            os.system("df -h")
+                        logger.info("Start creating model.")
+                        # local_response = requests.post(url=f'http://0.0.0.0:8080/dreambooth/createModel',
+                        #                         params=db_create_model_params)
+                        create_model_func_args = copy.deepcopy(db_create_model_params)
+                        # ckpt_path = create_model_func_args.pop("new_model_src")
+                        # create_model_func_args["ckpt_path"] = ckpt_path
+                        local_response = create_model(**create_model_func_args)
+                        target_local_model_dir = f'models/dreambooth/{db_create_model_params["new_model_name"]}'
+                        logging.info(f"Upload tgt model to s3 {target_local_model_dir} {output_bucket_name} {output_path}")
+                        upload_folder_to_s3_by_tar(target_local_model_dir, output_bucket_name, output_path)
+                        config_file = os.path.join(target_local_model_dir, "db_config.json")
+                        with open(config_file, 'r') as openfile:
+                            config_dict = json.load(openfile)
+                        message = {
+                            "response": local_response,
+                            "config_dict": config_dict
+                        }
+                        response = {
+                            "id": job_id,
+                            "statusCode": 200,
+                            "message": message,
+                            "outputLocation": [f'{s3_output_path}/db_create_model_params["new_model_name"]']
+                        }
+                        return response
+                    except Exception as e:
+                        response = {
+                            "id": job_id,
+                            "statusCode": 500,
+                            "message": traceback.format_exc(),
+                        }
+                        logger.error(traceback.format_exc())
+                        return response
+                    finally:
+                        # Clean up
+                        logger.info("Delete src model.")
+                        delete_src_command = f"rm -rf models/Stable-diffusion/{db_create_model_params['ckpt_path']}"
+                        logger.info(delete_src_command)
+                        os.system(delete_src_command)
+                        logging.info("Delete tgt model.")
+                        delete_tgt_command = f"rm -rf models/dreambooth/{db_create_model_params['new_model_name']}"
+                        logger.info(delete_tgt_command)
+                        os.system(delete_tgt_command)
+                        logging.info("Check disk usage after request.")
+                        os.system("df -h")
                 elif req.task == 'merge-checkpoint':
                     try:
-                        task5 = tg.create_task(opt_merge_checkpoint(req))
-                        await task5
-                        # return await opt_merge_checkpoint(req)
+                        output_model_position = merge_model_on_cloud(req)
+                        response = {
+                            "statusCode": 200,
+                            "message": output_model_position,
+                        }
+                        return response
                     except Exception as e:
                         traceback.print_exc()
                 else:
                     raise NotImplementedError
             except Exception as e:
                 traceback.print_exc()
-
-    async def create_db_model(req):
-        r"""
-        task: db-create-model
-        db_create_model_payload:
-        :s3_input_path: S3 path for download src model.
-        :s3_output_path: S3 path for upload generated model.
-        :ckpt_from_cloud: Whether to get ckpt from cloud or local.
-        :job_id: job id.
-        :param
-        :new_model_name: generated model name.
-        :ckpt_path: S3 path for download src model.
-        :db_new_model_shared_src="",
-        :from_hub=False,
-        :new_model_url="",
-        :new_model_token="",
-        :extract_ema=False,
-        :train_unfrozen=False,
-        :is_512=True,
-        """
-        try:
-            db_create_model_payload = json.loads(req.db_create_model_payload)
-            job_id = db_create_model_payload["job_id"]
-            s3_output_path = db_create_model_payload["s3_output_path"]
-            output_bucket_name = get_bucket_name_from_s3_path(s3_output_path)
-            output_path = get_path_from_s3_path(s3_output_path)
-            db_create_model_params = db_create_model_payload["param"]["create_model_params"]
-            if "ckpt_from_cloud" in db_create_model_payload["param"]:
-                ckpt_from_s3 = db_create_model_payload["param"]["ckpt_from_cloud"]
-            else:
-                ckpt_from_s3 = False
-            if not db_create_model_params['from_hub']:
-                if ckpt_from_s3:
-                    s3_input_path = db_create_model_payload["param"]["s3_ckpt_path"]
-                    local_model_path = db_create_model_params["ckpt_path"]
-                    input_path = get_path_from_s3_path(s3_input_path)
-                    logger.info(f"ckpt from s3 {input_path} {local_model_path}")
-                else:
-                    s3_input_path = db_create_model_payload["s3_input_path"]
-                    local_model_path = db_create_model_params["ckpt_path"]
-                    input_path = os.path.join(get_path_from_s3_path(s3_input_path), local_model_path)
-                    logger.info(f"ckpt from local {input_path} {local_model_path}")
-                input_bucket_name = get_bucket_name_from_s3_path(s3_input_path)
-                logging.info("Check disk usage before download.")
-                os.system("df -h")
-                logger.info(
-                    f"Download src model from s3 {input_bucket_name} {input_path} {local_model_path}")
-                download_folder_from_s3_by_tar(input_bucket_name, input_path, local_model_path)
-                # Refresh the ckpt list.
-                sd_models.list_models()
-                logger.info("Check disk usage after download.")
-                os.system("df -h")
-            logger.info("Start creating model.")
-            # local_response = requests.post(url=f'http://0.0.0.0:8080/dreambooth/createModel',
-            #                         params=db_create_model_params)
-            create_model_func_args = copy.deepcopy(db_create_model_params)
-            # ckpt_path = create_model_func_args.pop("new_model_src")
-            # create_model_func_args["ckpt_path"] = ckpt_path
-            local_response = create_model(**create_model_func_args)
-            target_local_model_dir = f'models/dreambooth/{db_create_model_params["new_model_name"]}'
-            logging.info(
-                f"Upload tgt model to s3 {target_local_model_dir} {output_bucket_name} {output_path}")
-            upload_folder_to_s3_by_tar(target_local_model_dir, output_bucket_name, output_path)
-            config_file = os.path.join(target_local_model_dir, "db_config.json")
-            with open(config_file, 'r') as openfile:
-                config_dict = json.load(openfile)
-            message = {
-                "response": local_response,
-                "config_dict": config_dict
-            }
-            response = {
-                "id": job_id,
-                "statusCode": 200,
-                "message": message,
-                "outputLocation": [f'{s3_output_path}/db_create_model_params["new_model_name"]']
-            }
-            return response
-        except Exception as e:
-            response = {
-                "id": job_id,
-                "statusCode": 500,
-                "message": traceback.format_exc(),
-            }
-            logger.error(traceback.format_exc())
-            return response
-        finally:
-            # Clean up
-            logger.info("Delete src model.")
-            delete_src_command = f"rm -rf models/Stable-diffusion/{db_create_model_params['ckpt_path']}"
-            logger.info(delete_src_command)
-            os.system(delete_src_command)
-            logging.info("Delete tgt model.")
-            delete_tgt_command = f"rm -rf models/dreambooth/{db_create_model_params['new_model_name']}"
-            logger.info(delete_tgt_command)
-            os.system(delete_tgt_command)
-            logging.info("Check disk usage after request.")
-            os.system("df -h")
-
-    async def opt_merge_checkpoint(req):
-        output_model_position = merge_model_on_cloud(req)
-        response = {
-            "statusCode": 200,
-            "message": output_model_position,
-        }
-        return response
-
-    async def opt_interrogate_clip(req):
-        response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/interrogate',
-                                 json=json.loads(req.interrogate_payload.json()))
-        return response.json()
-
-    async def opt_img2img(req):
-        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img start!!!!!!!!")
-        selected_models = req.models
-        checkpoint_info = req.checkpoint_info
-        # checkspace_and_update_models(selected_models, checkpoint_info)
-        print(
-            f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
-        # response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/img2img',
-        #                          json=json.loads(req.img2img_payload.json()))
-        print(
-            f"{threading.current_thread().ident}_{threading.current_thread().name}_______ img2img end !!!!!!!!")
-        response = await asyncio.gather(
-            checkspace_and_update_models(selected_models, checkpoint_info),
-            requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
-                          json=json.loads(req.img2img_payload.json()))
-        )
-        print(response.count())
-        print(response.index(1))
-        return response
-
-    async def opt_txt2img(req):
-        print(f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img start !!!!!!!!")
-        selected_models = req.models
-        checkpoint_info = req.checkpoint_info
-        await checkspace_and_update_models(selected_models, checkpoint_info)
-        print(
-            f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img models update !!!!!!!!")
-        print(json.loads(req.txt2img_payload.json()))
-        # response = requests.post(url=f'http://0.0.0.0:8080/sdapi/v1/txt2img',
-        #                          json=json.loads(req.txt2img_payload.json()))
-        async def txt2img(req):
-            async with aiohttp.ClientSession() as session:
-                async with session.post('http://0.0.0.0:8080/sdapi/v1/txt2img',
-                                        json=json.loads(req.txt2img_payload.json())) as response:
-                    print("Status:", response.status)
-                    print("Content-type:", response.headers['content-type'])
-                    json_body = await response.json()
-                    return json_body
-
-        # json_body = asyncio.run(txt2img(req))
-        # return json_body
-        response = await txt2img(req)
-        print(
-            f"{threading.current_thread().ident}_{threading.current_thread().name}_______ txt2img end !!!!!!!! ")
-        # response = await asyncio.gather(
-        #     checkspace_and_update_models(selected_models, checkpoint_info),
-        #     txt2img(req)
-        # )
-        # print(show_slim_dict(response))
-        # print(response.index(1))
-        return response
-        # return response.json()
+            finally:
+                thread_deque.popleft()
+                condition.notify()
 
     @app.get("/ping")
     def ping():
         return {'status': 'Healthy'}
 
-
+import hashlib
 def md5(fname):
     hash_md5 = hashlib.md5()
     with open(fname, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
-
 
 def get_file_md5_dict(path):
     file_dict = {}
@@ -395,11 +380,10 @@ def get_file_md5_dict(path):
             file_dict[file] = md5(os.path.join(root, file))
     return file_dict
 
-
 def move_model_to_tmp(_, app: FastAPI):
     # os.system("rm -rf models")
     # Create model dir
-    # print("Create model dir")
+    # logger.info("Create model dir")
     # os.system("mkdir models")
     # Move model dir to /tmp
     logging.info("Copy model dir to tmp")
@@ -419,7 +403,7 @@ def move_model_to_tmp(_, app: FastAPI):
     if is_complete:
         os.system(f"rm -rf models")
         # Delete tmp model dir
-        # print("Delete tmp model dir")
+        # logger.info("Delete tmp model dir")
         # os.system("rm -rf /tmp/models")
         # Link model dir
         logging.info("Link model dir")
@@ -429,16 +413,17 @@ def move_model_to_tmp(_, app: FastAPI):
     logging.info("Check disk usage on app started")
     os.system("df -h")
 
-
 try:
     import modules.script_callbacks as script_callbacks
 
     script_callbacks.on_app_started(sagemaker_api)
     on_docker = os.environ.get('ON_DOCKER', "false")
     if on_docker == "true":
+        from modules import shared
+        shared.opts.data.update(control_net_max_models_num=10)
         script_callbacks.on_app_started(move_model_to_tmp)
     logger.debug("SD-Webui API layer loaded")
 except Exception as e:
-    print(e)
+    logger.error(e)
     logger.debug("Unable to import script callbacks.")
     pass
