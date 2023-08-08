@@ -34,7 +34,206 @@ window.onload = function() {
     }, 2000);
 };
 
+let uploadedFilesMap = new Map();
+let chunkSize = 1024 * 1024 * 1024; // 1GB chunk size, you can adjust this as needed.
 
+function getModelTypeValue(dropdowm_value){
+    const typeDom = document.getElementById("model_type_value_ele_id");
+    typeDom.value = dropdowm_value
+    return dropdowm_value
+}
+
+function showFileName(event) {
+    const fileListDiv = document.getElementById("hidden_bind_upload_files");
+    // show file name key
+    const typeDom = document.getElementById("model_type_value_ele_id");
+    const typeValue = typeDom.value
+    if(typeValue == null){
+        alert("Please choose model type!")
+        return;
+    }
+    if (uploadedFilesMap.size == 0){
+        // uploadedFiles = event.target.files;
+        uploadedFilesMap.set(typeValue,event.target.files);
+    }else {
+        // uploadedFiles.push(...event.target.files);
+        if (uploadedFilesMap.has(typeValue)) {
+            let existFiles = new Array(0);
+            for (const uploadFile of uploadedFilesMap.get(typeValue)) {
+                existFiles.push(uploadFile);
+                for (const file of event.target.files) {
+                    if (uploadFile.name == file.name && uploadFile.size == file.size) {
+                        alert("Duplicate model to upload！");
+                        continue;
+                    }
+                }
+            }
+            existFiles.push(...event.target.files);
+            uploadedFilesMap.set(typeValue, existFiles);
+        } else {
+            uploadedFilesMap.set(typeValue, event.target.files);
+        }
+    }
+    fileListDiv.innerHTML = "";
+    for (let [typeKey, uploadedFiles] of uploadedFilesMap) {
+        const fileArray = Array.from(uploadedFiles);
+        if(fileArray.length === 0){
+            continue;
+        }
+        const fileItemSpan = document.createElement("span");
+        fileItemSpan.innerHTML = `${typeKey}: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`;
+        fileListDiv.appendChild(fileItemSpan);
+
+
+        let map = new Map();
+        fileArray.forEach(row => {
+          map.set(row.name, row);
+        })
+        for (let [key, uploadedFile] of map) {
+            const fileName = uploadedFile.name;
+            const fileSize = uploadedFile.size;
+            const fileType = uploadedFile.type;
+            const fileItemDiv = document.createElement("div");
+            fileItemDiv.innerHTML = `&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Name: ${fileName} | Size: ${fileSize} bytes | Type: ${fileType} &nbsp;&nbsp;&nbsp;`;
+            const deleteButton = document.createElement("button");
+            deleteButton.style.backgroundColor = "#E5E5E5";
+            deleteButton.style.border = "1px solid black";
+            deleteButton.style.borderRadius = "2px";
+            deleteButton.textContent = "DELETE";
+            deleteButton.addEventListener("click", () => {
+                map.delete(key);
+                const parentNode = fileItemDiv.parentNode;
+                if (parentNode) {
+                    // 判断 fileItemDiv 是否是最后一个元素
+                    const isLastChild = Array.from(parentNode.children).indexOf(fileItemDiv) === parentNode.children.length - 1;
+                    // 删除对应的 fileItemDiv 和 fileItemSpan
+                    parentNode.removeChild(fileItemDiv);
+                    if (isLastChild) {
+                        parentNode.removeChild(fileItemSpan);
+                    }
+                }
+                // fileListDiv.removeChild(fileItemDiv);
+            });
+            fileItemDiv.appendChild(deleteButton);
+            fileListDiv.appendChild(fileItemDiv);
+        }
+        uploadedFilesMap.set(typeKey,map.values())
+    }
+}
+
+function updateProgress(groupName, fileName, progress) {
+    // 根据groupName找到对应的进度条或其他UI元素
+    const progressBar = document.getElementById(`progress-bar`);
+    const progressDiv = document.createElement(`div`);
+    if (progressBar) {
+        // 更新进度条的宽度或显示上传百分比
+        progressDiv.style.width = `${progress}%`;
+        progressDiv.innerText = `${groupName}-${fileName}: ${progress.toFixed(2)}%`;
+        progressBar.appendChild(progressDiv)
+    }
+}
+
+function uploadFileToS3(file, groupName) {
+    const fileSize = file.size;
+    const totalChunks = Math.ceil(fileSize / chunkSize);
+    const presignedUrls = [];
+    const apiGatewayUrl = document.querySelector("#aws_middleware_api > label > textarea")?
+        document.querySelector("#aws_middleware_api > label > textarea")["value"]: "";
+    const apiToken = document.querySelector("#aws_middleware_token > label > textarea")?
+        document.querySelector("#aws_middleware_token > label > textarea")["value"]: "";
+    // 发送POST请求到服务器，获取文件分段的S3 presigned URL
+    const fileName = file.name;
+    const payload = {
+        checkpoint_type: groupName,
+        filenames: [{
+            filename: fileName,
+            parts_number: totalChunks
+        }],
+        params: { message: "placeholder for chkpts upload test" }
+    };
+    const apiUrl = apiGatewayUrl.endsWith('/') ? apiGatewayUrl : apiGatewayUrl + '/';
+    const apiKey = apiToken;
+    const url = apiUrl + "checkpoint";
+    fetch(url, {
+        method: "POST",
+        headers: {
+            'x-api-key': apiKey
+        },
+        body: JSON.stringify(payload),
+    })
+        .then((response) => response.json())
+        .then((data) => {
+            const presignedUrlList = data.s3PresignUrl;
+            const presignedUrl = presignedUrlList[fileName];
+            presignedUrls.push(presignedUrl);
+            // 当获取到所有分片的S3 presigned URL后，开始上传文件分片
+            if (presignedUrls.length === totalChunks) {
+                uploadFileChunks(file, presignedUrls, groupName);
+            }
+        })
+        .catch((error) => {
+            console.error("Error getting presigned URL:", error);
+            // 处理错误
+        });
+}
+
+function uploadFileChunks(file, presignedUrls, groupName) {
+    const totalChunks = presignedUrls.length;
+    let currentChunk = 0;
+    function uploadNextChunk() {
+        if (currentChunk >= totalChunks) {
+            console.log("All chunks uploaded successfully!");
+            // 可在此处触发上传完成后的操作
+            uploadedFilesMap.clear();
+            return;
+        }
+        const chunk = file.slice(
+        currentChunk * chunkSize,
+        (currentChunk + 1) * chunkSize
+    );
+    // 使用Fetch API或XMLHttpRequest将当前分片上传到S3的presigned URL
+    fetch(presignedUrls[currentChunk], {
+        method: "PUT",
+        body: chunk,
+    })
+        .then((response) => {
+            if (!response.ok) {
+                throw new Error("Chunk upload failed");
+            }
+            currentChunk++;
+            const progress = (currentChunk / totalChunks) * 100;
+            // 更新进度条的宽度或显示上传百分比
+            updateProgress(groupName, file.name, progress);
+            uploadNextChunk();
+        })
+        .catch((error) => {
+            console.error(`Error uploading chunk ${currentChunk}:`, error);
+            // 处理错误
+        });
+    }
+    // 开始上传第一个分片
+    uploadNextChunk();
+}
+
+function uploadFiles() {
+    const uploadPromises = [];
+    for (const [groupName, files] of uploadedFilesMap.entries()) {
+        for (const file of files) {
+            uploadPromises.push(uploadFileToS3(file, groupName));
+        }
+    }
+    Promise.all(uploadPromises)
+        .then(() => {
+            console.log("All files uploaded successfully!");
+            // All files are uploaded, you can perform further actions here if needed.
+            return "All files uploaded successfully!"
+        })
+        .catch((error) => {
+            console.error("Error uploading files:", error);
+            return "Error uploading files"
+            // Handle errors as needed.
+        });
+}
 
 // Save configuration in txt2img panel
 function getDomValue(selector, defaultValue, isTextContent = false) {
