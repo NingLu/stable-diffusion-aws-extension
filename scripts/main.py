@@ -276,6 +276,14 @@ class SageMakerUI(scripts.Script):
         js = json.dumps(api_param, default=encode_no_json)
 
         # fixme: not handle batches yet
+        from modules import shared
+        if shared.opts.sd_vae and shared.opts.sd_vae != 'None':
+            if shared.opts.sd_vae == 'Automatic':
+                models['VAE'] = [models['Stable-diffusion'][0]]
+            else:
+                models['VAE'] = [shared.opts.sd_vae]
+
+
         p.setup_prompts()
         p.prompts = p.all_prompts
         p.negative_prompts = p.all_negative_prompts
@@ -352,8 +360,7 @@ class SageMakerUI(scripts.Script):
             response.raise_for_status()
             upload_param_response = response.json()
 
-            if 'inference' in upload_param_response and 'api_params_s3_upload_url' in upload_param_response[
-                'inference']:
+            if 'inference' in upload_param_response and 'api_params_s3_upload_url' in upload_param_response['inference']:
                 upload_s3_resp = requests.put(upload_param_response['inference']['api_params_s3_upload_url'], data=js)
                 upload_s3_resp.raise_for_status()
                 inference_id = upload_param_response['inference']['id']
@@ -797,13 +804,13 @@ def on_ui_tabs():
                     with FormRow(elem_id="model_upload_form_row_02"):
                         hidden_bind_html = gr.HTML(elem_id="hidden_bind_upload_files", value="<div id='hidden_bind_upload_files_html'></div>")
                     with FormRow(elem_id="model_upload_form_row_03"):
-                        upload_label = gr.TextArea(label="upload process", elem_id="progress-bar")
+                        upload_label = gr.HTML(label="upload process", elem_id="progress-bar")
                     with gr.Row():
                         model_update_button = gr.Button(value="Upload Models to Cloud", variant="primary", elem_id="sagemaker_model_update_button", size=(200, 50))
                         model_update_button.click(_js="uploadFiles",
                                                   fn=sagemaker_ui.sagemaker_upload_model_s3,
                                                   # inputs=[sagemaker_ui.checkpoint_info],
-                                                  outputs=[upload_label]
+                                                  # outputs=[upload_label]
                                                   )
                 with gr.Blocks(title="Deploy New SageMaker Endpoint", variant='panel'):
                     gr.HTML(value="<b>Deploy New SageMaker Endpoint</b>")

@@ -497,6 +497,7 @@ def sagemaker_upload_model_s3():
     log = "Start upload:"
     return log
 
+
 def generate_on_cloud(sagemaker_endpoint):
     print(f"checkpiont_info {checkpoint_info}")
     print(f"sagemaker endpoint {sagemaker_endpoint}")
