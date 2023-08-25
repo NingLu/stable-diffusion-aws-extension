@@ -13,6 +13,8 @@ from common.ddb_service.client import DynamoDbUtilsService
 from common.util import generate_presign_url, load_json_from_s3, upload_json_to_s3, split_s3_path
 from inference_v2._types import InferenceJob, InvocationsRequest
 from model_and_train._types import CheckPoint
+import requests
+import base64
 
 bucket_name = os.environ.get('S3_BUCKET')
 checkpoint_table = os.environ.get('CHECKPOINT_TABLE')
@@ -191,6 +193,35 @@ def run_inference(event, _):
     }
 
 
+def download_image(value):
+    pass
+
+def convert_image_to_base64(image_content):
+    url = 'http://example.com/image.jpg'
+    response = requests.get(url)
+    img_base64 = base64.b64encode(response.content).decode('utf-8')
+
+
+# Download all images by http url and change them to base64 encoding
+def handle_images(event):
+    for key, value in event.items():
+        if isinstance(value, dict):
+            # "alwayson_scripts": {"controlnet": {...}}
+            handle_images(value)
+        elif isinstance(value, list):
+            # "init_images": [ "data:image/png;base64..." ]
+            for list_item in value:
+                handle_images(list_item)
+        else:
+            # "image": "data:image/png;base64,iVB..."
+            response = requests.get(value)
+            img_base64 = base64.b64encode(response.content).decode('utf-8')
+            event[key] = img_base64
+    
+    return event
+
+
+
 # POST /inference-api
 def inference_l2(raw_event, context):
     request_id = context.aws_request_id
@@ -201,6 +232,8 @@ def inference_l2(raw_event, context):
         }
     task_type = raw_event['task_type']
     ep_name = raw_event['sagemaker_endpoint_name']
+    if task_type.lower() == 'img2img':
+        handle_images(raw_event)
 
     prepare_infer_event = {
         'sagemaker_endpoint_name': raw_event['sagemaker_endpoint_name'],
